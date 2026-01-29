@@ -1,0 +1,43 @@
+# Source files
+src/
+*.ts
+!*.d.ts
+
+# Development files
+tests/
+*.test.ts
+*.spec.ts
+
+# Development configs
+tsconfig.json
+.eslintrc*
+.prettierrc*
+jest.config.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+.git/
+.gitignore
+
+*.md
+!README.md
+
+# Development scripts
+*.sh
+*.bat
+
+# Temporary files
+tmp/
+temp/
+*.log
+npm-debug.log*
+
+# Example files (users can copy these)
+.dev-env.yml.example
+
+# Build artifacts (will be included via files field)
+# dist/ is included
