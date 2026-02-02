@@ -84,6 +84,29 @@ describe('validator', () => {
       );
     });
 
+    it('warns when mysql missing user or password', () => {
+      const config = {
+        name: 'app',
+        databases: [{ type: 'mysql' as const, port: 3306, host: 'localhost', database: 'db' }],
+      };
+      checkConfigWarnings(config as DevEnvConfig);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('missing user or password')
+      );
+    });
+
+    it('warns when service port conflicts with database port', () => {
+      const config = {
+        name: 'app',
+        databases: [{ type: 'redis' as const, port: 6379, host: 'localhost' }],
+        services: [{ type: 'other' as const, port: 6379, host: 'localhost' }],
+      };
+      checkConfigWarnings(config as DevEnvConfig);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Port 6379')
+      );
+    });
+
     it('warns on duplicate port usage', () => {
       const config = {
         name: 'app',

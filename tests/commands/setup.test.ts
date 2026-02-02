@@ -37,4 +37,45 @@ describe('setup command', () => {
     await runSetup({ dryRun: true });
     expect(execFn).not.toHaveBeenCalled();
   });
+
+  it('skipDeps skips dependency installation when config has dependencies', async () => {
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      [
+        'name: setup-test',
+        'dependencies:',
+        '  - type: npm',
+        '    command: npm install',
+        '    path: .',
+        'databases: []',
+      ].join('\n')
+    );
+    process.chdir(tempDir);
+
+    await runSetup({ skipDeps: true });
+    expect(execFn).not.toHaveBeenCalled();
+  });
+
+  it('skipDb skips migrations and seed when config has databases with migrations', async () => {
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      [
+        'name: setup-test',
+        'dependencies: []',
+        'databases:',
+        '  - type: postgresql',
+        '    port: 5432',
+        '    host: localhost',
+        '    migrations:',
+        '      - path: .',
+        '        command: echo migrate',
+        '    seed:',
+        '      command: echo seed',
+      ].join('\n')
+    );
+    process.chdir(tempDir);
+
+    await runSetup({ skipDb: true });
+    expect(execFn).not.toHaveBeenCalled();
+  });
 });

@@ -41,6 +41,18 @@ describe('config loader', () => {
       const result = resolveEnvVars('hello ${MISSING_VAR} world', {});
       expect(result).toBe('hello ${MISSING_VAR} world');
     });
+
+    it('replaces multiple vars in one string', () => {
+      const result = resolveEnvVars('${A}-${B}-${C}', { A: '1', B: '2', C: '3' });
+      expect(result).toBe('1-2-3');
+    });
+
+    it('provided env overrides process.env for same key', () => {
+      process.env.OVERRIDE_TEST = 'process';
+      const result = resolveEnvVars('${OVERRIDE_TEST}', { OVERRIDE_TEST: 'provided' });
+      expect(result).toBe('provided');
+      delete process.env.OVERRIDE_TEST;
+    });
   });
 
   describe('loadEnvFile', () => {

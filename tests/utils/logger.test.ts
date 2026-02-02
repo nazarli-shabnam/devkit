@@ -43,4 +43,17 @@ describe('logger', () => {
     logger.success('done');
     expect(consoleSpy.log).toHaveBeenCalledTimes(2);
   });
+
+  it('step calls console.log', () => {
+    logger.step('next step');
+    expect(consoleSpy.log).toHaveBeenCalledWith(expect.stringContaining('next step'));
+  });
+
+  it('warn is emitted at WARN level', () => {
+    logger.setLevel(LogLevel.WARN);
+    logger.info('hidden');
+    logger.warn('visible');
+    expect(consoleSpy.log).not.toHaveBeenCalled();
+    expect(consoleSpy.warn).toHaveBeenCalledWith(expect.stringContaining('visible'));
+  });
 });

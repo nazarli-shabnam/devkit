@@ -65,6 +65,14 @@ describe('file-ops', () => {
       await fs.writeFile(f, '{"foo": "bar"}');
       expect(await readJson(f)).toEqual({ foo: 'bar' });
     });
+
+    it('throws on invalid JSON', async () => {
+      const f = path.join(tempDir, 'bad.json');
+      await fs.writeFile(f, 'not json {');
+      const errorSpy = jest.spyOn(logger, 'error').mockImplementation();
+      await expect(readJson(f)).rejects.toThrow();
+      errorSpy.mockRestore();
+    });
   });
 
   describe('writeJson', () => {
@@ -123,6 +131,16 @@ describe('file-ops', () => {
       const found = await findFiles(tempDir, /\.ts$/);
       expect(found).toHaveLength(2);
       expect(found.every((p) => p.endsWith('.ts'))).toBe(true);
+    });
+
+    it('searches subdirectories recursively', async () => {
+      const sub = path.join(tempDir, 'sub', 'nested');
+      await fs.ensureDir(sub);
+      await fs.writeFile(path.join(sub, 'deep.ts'), '');
+      await fs.writeFile(path.join(tempDir, 'root.ts'), '');
+      const found = await findFiles(tempDir, /\.ts$/);
+      expect(found).toHaveLength(2);
+      expect(found.some((p) => p.includes('nested'))).toBe(true);
     });
   });
 });
