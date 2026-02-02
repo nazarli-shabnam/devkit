@@ -1,4 +1,4 @@
-import { execa, ExecaReturnValue } from 'execa';
+import type { ExecaReturnValue } from 'execa';
 import { logger } from './logger';
 import { isWindows, getShell } from './platform';
 
@@ -7,6 +7,12 @@ export interface ExecOptions {
   env?: Record<string, string>;
   silent?: boolean;
   shell?: boolean | string;
+}
+
+async function getExeca() {
+  const loadExeca = require('./load-execa.js');
+  const m = await loadExeca();
+  return m.execa;
 }
 
 export async function exec(
@@ -23,6 +29,7 @@ export async function exec(
     logger.debug(`Executing: ${command} ${args.join(' ')}`);
   }
 
+  const execa = await getExeca();
   try {
     const result = await execa(command, args, {
       cwd,

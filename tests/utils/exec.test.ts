@@ -1,7 +1,7 @@
 const mockExeca = jest.fn();
-jest.mock('execa', () => ({
-  execa: (...args: unknown[]) => mockExeca(...args),
-}));
+jest.mock('../../src/utils/load-execa.js', () => () =>
+  Promise.resolve({ execa: (...args: unknown[]) => mockExeca(...args) })
+);
 
 import { exec, execStdout, commandExists } from '../../src/utils/exec';
 
