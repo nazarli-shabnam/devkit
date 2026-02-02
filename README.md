@@ -22,6 +22,15 @@ devkit setup
 
 **Commands:** `setup` | `snapshot create|list|restore` | `generate` | `share export|import`
 
+## Testing
+
+```bash
+npm install
+npm test
+```
+
+Optional: `npm test -- --coverage` for a coverage report.
+
 ## License
 
 MIT
