@@ -10,11 +10,7 @@ const packageJsonPath = path.join(__dirname, '../../package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
 const version = packageJson.version;
 
-// import { setupCommand } from '../commands/setup';
-// import { snapshotCommand } from '../commands/snapshot';
-// import { restoreCommand } from '../commands/restore';
-// import { shareCommand } from '../commands/share';
-// import { generateCommand } from '../commands/generate';
+import { runSetup } from '../commands/setup';
 
 const program = new Command();
 
@@ -44,9 +40,16 @@ program
   .option('--skip-db', 'Skip database setup')
   .option('--dry-run', 'Preview changes without executing')
   .action(async (options) => {
-    logger.info('Setup command - Coming soon!');
-    logger.info('Options:', options);
-    // TODO: Implement setup command
+    try {
+      await runSetup({
+        skipDeps: options.skipDeps,
+        skipDb: options.skipDb,
+        dryRun: options.dryRun,
+      });
+    } catch (err: any) {
+      logger.error(err.message ?? 'Setup failed');
+      process.exit(1);
+    }
   });
 
 const snapshotCommand = program
