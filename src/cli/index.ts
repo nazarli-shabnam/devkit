@@ -11,6 +11,7 @@ const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
 const version = packageJson.version;
 
 import { runSetup } from '../commands/setup';
+import { runGenerate } from '../commands/generate';
 
 const program = new Command();
 
@@ -86,9 +87,13 @@ program
   .command('generate')
   .description('Generate docker-compose.yml from configuration')
   .option('-o, --output <file>', 'Output file path', 'docker-compose.yml')
-  .action(async (_options) => {
-    logger.info('Generate command - Coming soon!');
-    // TODO: Implement generate command
+  .action(async (options) => {
+    try {
+      await runGenerate({ output: options.output });
+    } catch (err: any) {
+      logger.error(err.message ?? 'Generate failed');
+      process.exit(1);
+    }
   });
 
 const shareCommand = program

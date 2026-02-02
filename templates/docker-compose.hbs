@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+{{#each services}}
+  {{name}}:
+    image: {{image}}{{#if version}}:{{version}}{{/if}}
+    {{#if ports}}
+    ports:
+      {{#each ports}}
+      - "{{this}}"
+      {{/each}}
+    {{/if}}
+    {{#if env}}
+    environment:
+      {{#each env}}
+      - {{@key}}={{this}}
+      {{/each}}
+    {{/if}}
+    {{#if healthcheck}}
+    healthcheck:
+      {{#each healthcheck}}
+      {{@key}}: {{this}}
+      {{/each}}
+    {{/if}}
+    networks:
+      - {{../networkName}}
+{{/each}}
+
+networks:
+  {{networkName}}:
+    name: {{networkName}}
