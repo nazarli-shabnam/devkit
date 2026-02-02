@@ -12,6 +12,7 @@ const version = packageJson.version;
 
 import { runSetup } from '../commands/setup';
 import { runGenerate } from '../commands/generate';
+import { runSnapshotList } from '../commands/snapshot';
 
 const program = new Command();
 
@@ -70,8 +71,12 @@ snapshotCommand
   .command('list')
   .description('List all snapshots')
   .action(async () => {
-    logger.info('Snapshot list command - Coming soon!');
-    // TODO: Implement snapshot list
+    try {
+      await runSnapshotList();
+    } catch (err: unknown) {
+      logger.error((err as Error).message ?? 'Snapshot list failed');
+      process.exit(1);
+    }
   });
 
 snapshotCommand
