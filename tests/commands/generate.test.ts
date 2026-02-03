@@ -1,12 +1,17 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
 import { runGenerate } from '../../src/commands/generate';
+import { logger } from '../../src/utils/logger';
 
 describe('generate command', () => {
   let tempDir: string;
   const originalCwd = process.cwd();
 
   beforeEach(async () => {
+    jest.spyOn(logger, 'warn').mockImplementation();
+    jest.spyOn(logger, 'info').mockImplementation();
+    jest.spyOn(logger, 'success').mockImplementation();
+    jest.spyOn(logger, 'debug').mockImplementation();
     tempDir = path.join(require('os').tmpdir(), `devkit-generate-${Date.now()}`);
     await fs.ensureDir(tempDir);
   });
@@ -14,6 +19,7 @@ describe('generate command', () => {
   afterEach(async () => {
     process.chdir(originalCwd);
     await fs.remove(tempDir).catch(() => {});
+    jest.restoreAllMocks();
   });
 
   it('throws when .dev-env.yml is not found', async () => {
