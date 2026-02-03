@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 import { runSetup } from '../../src/commands/setup';
 import { exec as execFn } from '../../src/utils/exec';
+import { logger } from '../../src/utils/logger';
 
 jest.mock('../../src/utils/exec', () => ({
   exec: jest.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' }),
@@ -12,6 +13,10 @@ describe('setup command', () => {
   const originalCwd = process.cwd();
 
   beforeEach(async () => {
+    jest.spyOn(logger, 'warn').mockImplementation();
+    jest.spyOn(logger, 'info').mockImplementation();
+    jest.spyOn(logger, 'success').mockImplementation();
+    jest.spyOn(logger, 'debug').mockImplementation();
     tempDir = path.join(require('os').tmpdir(), `devkit-setup-${Date.now()}`);
     await fs.ensureDir(tempDir);
   });
@@ -20,6 +25,7 @@ describe('setup command', () => {
     process.chdir(originalCwd);
     await fs.remove(tempDir).catch(() => {});
     jest.mocked(execFn).mockClear();
+    jest.restoreAllMocks();
   });
 
   it('throws when .dev-env.yml is not found', async () => {

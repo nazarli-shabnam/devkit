@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
 import { loadConfig, loadEnvFile, resolveEnvVars, findProjectRoot } from '../../../src/core/config/loader';
+import { logger } from '../../../src/utils/logger';
 
 const validConfigYaml = `
 name: test-project
@@ -38,8 +39,10 @@ describe('config loader', () => {
     });
 
     it('leaves unresolved var as-is and logs warning', () => {
+      const warnSpy = jest.spyOn(logger, 'warn').mockImplementation();
       const result = resolveEnvVars('hello ${MISSING_VAR} world', {});
       expect(result).toBe('hello ${MISSING_VAR} world');
+      warnSpy.mockRestore();
     });
 
     it('replaces multiple vars in one string', () => {
