@@ -124,5 +124,14 @@ describe('config loader', () => {
       const found = await findProjectRoot(tempDir);
       expect(found).toBe(process.cwd());
     });
+
+    it('prefers .dev-env.yml over package.json when both exist', async () => {
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: from-yaml');
+      await fs.writeFile(path.join(tempDir, 'package.json'), '{}');
+      const subDir = path.join(tempDir, 'sub');
+      await fs.ensureDir(subDir);
+      const found = await findProjectRoot(subDir);
+      expect(found).toBe(tempDir);
+    });
   });
 });
