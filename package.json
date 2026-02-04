@@ -10,7 +10,7 @@
     "dist",
     "templates",
     "README.md",
-    ".dev-env.yml.example"
+    ".dev-env.example.yml"
   ],
   "scripts": {
     "build": "tsc && node -e \"require('fs').copyFileSync('src/utils/load-execa.js','dist/utils/load-execa.js')\"",

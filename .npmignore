@@ -36,8 +36,6 @@ temp/
 *.log
 npm-debug.log*
 
-# Example files (users can copy these)
-.dev-env.yml.example
 
 # Build artifacts (will be included via files field)
 # dist/ is included
