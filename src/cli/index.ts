@@ -13,6 +13,7 @@ const version = packageJson.version;
 import { runSetup } from '../commands/setup';
 import { runGenerate } from '../commands/generate';
 import { runSnapshotCreate, runSnapshotList } from '../commands/snapshot';
+import { runShareExport, runShareImport } from '../commands/share';
 
 const program = new Command();
 
@@ -111,19 +112,29 @@ const shareCommand = program
 
 shareCommand
   .command('export')
-  .description('Export configuration for sharing')
-  .action(async () => {
-    logger.info('Share export command - Coming soon!');
-    // TODO: Implement share export
+  .description('Export sanitized configuration for sharing (no secrets)')
+  .option('-o, --output <file>', 'Output file path', 'dev-env.shared.yml')
+  .action(async (options) => {
+    try {
+      await runShareExport({ output: options.output });
+    } catch (err: unknown) {
+      logger.error((err as Error).message ?? 'Share export failed');
+      process.exit(1);
+    }
   });
 
 shareCommand
   .command('import')
-  .description('Import shared configuration')
+  .description('Import shared configuration into project')
   .argument('<file>', 'Configuration file to import')
-  .action(async (_file) => {
-    logger.info('Share import command - Coming soon!');
-    // TODO: Implement share import
+  .option('-o, --output <file>', 'Output file path', '.dev-env.yml')
+  .action(async (file, options) => {
+    try {
+      await runShareImport(file, { output: options.output });
+    } catch (err: unknown) {
+      logger.error((err as Error).message ?? 'Share import failed');
+      process.exit(1);
+    }
   });
 
 program.parseAsync().catch((error: any) => {
