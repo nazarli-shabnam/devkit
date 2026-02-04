@@ -9,7 +9,7 @@ A CLI for local development environments: one-command setup, environment snapsho
 - **Setup** — Reads your project’s `.dev-env.yml`, installs dependencies, runs database migrations and seed commands.
 - **Generate** — Produces `docker-compose.yml` from the same config (databases, services, network).
 - **Snapshots** — Save and list copies of your current config under `.devkit/snapshots/<name>/` for later restore.
-- **Share** *(planned)* — Export/import sanitized config for sharing with others (no secrets).
+- **Share** — Export sanitized config (no secrets) or import a shared config file.
 
 Config is one YAML file plus optional `.env` for secrets; you reference variables with `${VAR_NAME}`. The CLI finds the project root from the current directory (looks for `.dev-env.yml` or `package.json`).
 
@@ -25,13 +25,13 @@ Or run without installing: `npx devkit <command>`
 
 ### 1. Configure your project
 
-In your project root, add a `.dev-env.yml` that describes your dev environment (dependencies, databases, services). Copy and edit the example:
+In your project root, add a `.dev-env.yml` that describes your dev environment (dependencies, databases, services). Copy the example file to `.dev-env.yml`, then edit:
 
 ```bash
-cp .dev-env.yml.example .dev-env.yml
+cp .dev-env.example.yml .dev-env.yml
 ```
 
-See [.dev-env.yml.example](./.dev-env.yml.example) for all options. Use a `.env` file for secrets and reference them in the config with `${VAR_NAME}`.
+See [.dev-env.example.yml](./.dev-env.example.yml) for all options. Put secrets in a `.env` file and reference them in the config with `${VAR_NAME}`.
 
 ### 2. Set up the environment
 
@@ -73,9 +73,27 @@ If you omit `name`, a timestamped name is used. List snapshots:
 devkit snapshot list
 ```
 
-`snapshot restore` is planned; it will write the snapshot’s config back to `.dev-env.yml`.
+Restore a snapshot to `.dev-env.yml`: `devkit snapshot restore <name>`.
 
-### 5. Global options
+### 5. Share (export / import)
+
+Export a sanitized copy of your config (passwords and secrets replaced with placeholders like `${DB_PASSWORD}`):
+
+```bash
+devkit share export
+```
+
+Writes to `dev-env.shared.yml` by default. Use `-o <file>` to choose another path.
+
+Import a shared config file into your project (validates and writes to `.dev-env.yml` by default):
+
+```bash
+devkit share import path/to/dev-env.shared.yml
+```
+
+Use `-o <file>` to write to a different path.
+
+### 6. Global options
 
 - `-v, --verbose` — more log output  
 - `-q, --quiet` — less output  
@@ -90,9 +108,9 @@ Example: `devkit -q setup`
 | `devkit generate`            | Generate docker-compose from config     |
 | `devkit snapshot create [name]` | Save current config to a snapshot  |
 | `devkit snapshot list`       | List snapshots                           |
-| `devkit snapshot restore [name]` | *(planned)* Restore a snapshot     |
-| `devkit share export`        | *(planned)* Export config for sharing   |
-| `devkit share import <file>` | *(planned)* Import shared config        |
+| `devkit snapshot restore <name>`  | Restore a snapshot to .dev-env.yml |
+| `devkit share export`          | Export sanitized config (-o file)  |
+| `devkit share import <file>`   | Import shared config (-o file)     |
 
 Use `devkit --help` or `devkit <command> --help` for details.
 

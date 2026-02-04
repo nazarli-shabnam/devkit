@@ -69,7 +69,14 @@ function serviceToComposeService(svc: Service, index: number): ComposeService {
 
 function loadComposeTemplate(templatesDir: string): string {
   const templatePath = path.join(templatesDir, 'docker-compose.hbs');
-  return fs.readFileSync(templatePath, 'utf-8');
+  try {
+    return fs.readFileSync(templatePath, 'utf-8');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Docker Compose template not found at ${templatePath}. ${msg}`
+    );
+  }
 }
 
 export function generateComposeContent(config: DevEnvConfig, templatesDir: string): string {

@@ -88,4 +88,91 @@ describe('CLI integration', () => {
     const out = runCli(['setup', '--help']);
     expect(out).toMatch(/skip-deps|skip-db|dry-run/);
   });
+
+  it('setup --dry-run runs from subdirectory when .dev-env.yml is in parent', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-setup-subdir-${Date.now()}`);
+    const subDir = path.join(tempDir, 'sub');
+    fs.ensureDirSync(subDir);
+    fs.writeFileSync(
+      path.join(tempDir, '.dev-env.yml'),
+      'name: e2e-setup\nversion: "1.0.0"\ndependencies: []\ndatabases: []'
+    );
+    try {
+      const out = runCli(['setup', '--dry-run'], subDir);
+      expect(out).toBeDefined();
+      expect(out.toLowerCase()).toMatch(/dry|would|setup/);
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
+  it('snapshot restore writes snapshot config back to .dev-env.yml', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-restore-${Date.now()}`);
+    fs.ensureDirSync(tempDir);
+    const original = 'name: before\nversion: "1.0.0"\ndatabases: []';
+    const restored = 'name: restored\nversion: "2.0.0"\ndatabases: []';
+    fs.writeFileSync(path.join(tempDir, '.dev-env.yml'), original);
+    runCli(['snapshot', 'create', 'e2e-backup'], tempDir);
+    fs.writeFileSync(
+      path.join(tempDir, '.devkit', 'snapshots', 'e2e-backup', 'dev-env.yml'),
+      restored
+    );
+    fs.writeFileSync(path.join(tempDir, '.dev-env.yml'), 'name: changed');
+    try {
+      const out = runCli(['snapshot', 'restore', 'e2e-backup'], tempDir);
+      expect(out).toMatch(/Restored|e2e-backup|\.dev-env\.yml/);
+      const current = fs.readFileSync(path.join(tempDir, '.dev-env.yml'), 'utf-8');
+      expect(current).toBe(restored);
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
+  it('share export writes sanitized config to dev-env.shared.yml', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-share-export-${Date.now()}`);
+    fs.ensureDirSync(tempDir);
+    const config = [
+      'name: e2e-share',
+      'version: "1.0.0"',
+      'databases:',
+      '  - type: postgresql',
+      '    port: 5432',
+      '    user: myuser',
+      '    password: secret123',
+      '    database: app',
+    ].join('\n');
+    fs.writeFileSync(path.join(tempDir, '.dev-env.yml'), config);
+    try {
+      const out = runCli(['share', 'export'], tempDir);
+      expect(out).toMatch(/Exported|dev-env\.shared\.yml/);
+      const sharedPath = path.join(tempDir, 'dev-env.shared.yml');
+      expect(fs.pathExistsSync(sharedPath)).toBe(true);
+      const content = fs.readFileSync(sharedPath, 'utf-8');
+      expect(content).toContain('${DB_PASSWORD}');
+      expect(content).not.toContain('secret123');
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
+  it('share import writes imported config to .dev-env.yml', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-share-import-${Date.now()}`);
+    fs.ensureDirSync(tempDir);
+    fs.writeFileSync(path.join(tempDir, '.dev-env.yml'), 'name: original\nversion: "1.0.0"');
+    const shared = 'name: imported-app\nversion: "3.0.0"\ndatabases:\n  - type: redis\n    port: 6379';
+    fs.writeFileSync(path.join(tempDir, 'shared.yml'), shared);
+    try {
+      const out = runCli(['share', 'import', 'shared.yml'], tempDir);
+      expect(out).toMatch(/Imported|\.dev-env\.yml/);
+      const content = fs.readFileSync(path.join(tempDir, '.dev-env.yml'), 'utf-8');
+      expect(content).toMatch(/name:\s*imported-app|imported-app/);
+      expect(content).toMatch(/redis|6379/);
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
 });

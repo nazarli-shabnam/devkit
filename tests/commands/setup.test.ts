@@ -62,6 +62,23 @@ describe('setup command', () => {
     expect(execFn).not.toHaveBeenCalled();
   });
 
+  it('throws when dependency command is empty', async () => {
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      [
+        'name: setup-test',
+        'dependencies:',
+        '  - type: npm',
+        '    command: ""',
+        '    path: .',
+        'databases: []',
+      ].join('\n')
+    );
+    process.chdir(tempDir);
+
+    await expect(runSetup({ dryRun: true })).rejects.toThrow(/Empty command/);
+  });
+
   it('skipDb skips migrations and seed when config has databases with migrations', async () => {
     await fs.writeFile(
       path.join(tempDir, '.dev-env.yml'),

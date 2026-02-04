@@ -75,5 +75,20 @@ describe('compose-generator', () => {
       const content = generateComposeContent(config, templatesDir);
       expect(content).toContain('dev-network');
     });
+
+    it('throws when templates dir has no docker-compose.hbs', () => {
+      const fs = require('fs');
+      const os = require('os');
+      const emptyDir = path.join(os.tmpdir(), `devkit-no-template-${Date.now()}`);
+      fs.mkdirSync(emptyDir, { recursive: true });
+      try {
+        const config = { name: 'app' } as DevEnvConfig;
+        expect(() => generateComposeContent(config, emptyDir)).toThrow(
+          /template not found|docker-compose\.hbs/
+        );
+      } finally {
+        fs.rmSync(emptyDir, { recursive: true, force: true });
+      }
+    });
   });
 });
