@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { findProjectRoot, loadConfig } from '../core/config/loader';
-import { createSnapshot, listSnapshots } from '../core/snapshot/storage';
-import { readFile } from '../utils/file-ops';
+import { createSnapshot, listSnapshots, getSnapshotConfig } from '../core/snapshot/storage';
+import { readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
 
 export async function runSnapshotCreate(name?: string): Promise<void> {
@@ -31,4 +31,18 @@ export async function runSnapshotList(): Promise<void> {
   for (const s of snapshots) {
     logger.info(`  ${s.name}  (${s.createdAt})`);
   }
+}
+
+export async function runSnapshotRestore(name: string): Promise<void> {
+  if (!name || !name.trim()) {
+    throw new Error('Snapshot name is required. List snapshots with: devkit snapshot list');
+  }
+
+  const projectRoot = await findProjectRoot(process.cwd());
+  const configYaml = await getSnapshotConfig(projectRoot, name.trim());
+
+  const configPath = path.join(projectRoot, '.dev-env.yml');
+  await writeFile(configPath, configYaml);
+
+  logger.success(`Restored snapshot "${name.trim()}" to .dev-env.yml`);
 }
