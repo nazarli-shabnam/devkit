@@ -12,7 +12,7 @@ const version = packageJson.version;
 
 import { runSetup } from '../commands/setup';
 import { runGenerate } from '../commands/generate';
-import { runSnapshotCreate, runSnapshotList } from '../commands/snapshot';
+import { runSnapshotCreate, runSnapshotList, runSnapshotRestore } from '../commands/snapshot';
 
 const program = new Command();
 
@@ -85,11 +85,15 @@ snapshotCommand
 
 snapshotCommand
   .command('restore')
-  .description('Restore from a snapshot')
-  .argument('[name]', 'Snapshot name')
-  .action(async (_name) => {
-    logger.info('Snapshot restore command - Coming soon!');
-    // TODO: Implement snapshot restore
+  .description('Restore .dev-env.yml from a snapshot')
+  .argument('<name>', 'Snapshot name')
+  .action(async (name) => {
+    try {
+      await runSnapshotRestore(name);
+    } catch (err: unknown) {
+      logger.error((err as Error).message ?? 'Snapshot restore failed');
+      process.exit(1);
+    }
   });
 
 program
