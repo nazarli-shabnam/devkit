@@ -23,7 +23,7 @@ export async function runSnapshotList(): Promise<void> {
   const snapshots = await listSnapshots(projectRoot);
 
   if (snapshots.length === 0) {
-    logger.info('No snapshots found. Create one with: devkit snapshot create [name]');
+    logger.info('No snapshots found. Create one with: envkit snapshot create [name]');
     return;
   }
 
@@ -35,7 +35,7 @@ export async function runSnapshotList(): Promise<void> {
 
 export async function runSnapshotRestore(name: string): Promise<void> {
   if (!name || !name.trim()) {
-    throw new Error('Snapshot name is required. List snapshots with: devkit snapshot list');
+    throw new Error('Snapshot name is required. List snapshots with: envkit snapshot list');
   }
 
   const projectRoot = await findProjectRoot(process.cwd());

@@ -1,4 +1,4 @@
-# devkit
+# envkit
 
 A CLI for local development environments: one-command setup, environment snapshots, and Docker Compose generation from a single config file.
 
@@ -16,10 +16,10 @@ Config is one YAML file plus optional `.env` for secrets; you reference variable
 ## Install
 
 ```bash
-npm install -g devkit
+npm install -g envkit
 ```
 
-Or run without installing: `npx devkit <command>`
+Or run without installing: `npx envkit <command>`
 
 ## How to use
 
@@ -38,7 +38,7 @@ See [.dev-env.example.yml](./.dev-env.example.yml) for all options. Put secrets 
 From the project root (or any subdirectory):
 
 ```bash
-devkit setup
+envkit setup
 ```
 
 This installs dependencies, runs database migrations, and runs seed commands according to your config. Options:
@@ -54,33 +54,33 @@ This installs dependencies, runs database migrations, and runs seed commands acc
 To create a `docker-compose.yml` from your `.dev-env.yml` (when `docker.enabled` is true):
 
 ```bash
-devkit generate
+envkit generate
 ```
 
-Use `-o <file>` to write to a different file, e.g. `devkit generate -o docker-compose.dev.yml`.
+Use `-o <file>` to write to a different file, e.g. `envkit generate -o docker-compose.dev.yml`.
 
 ### 4. Snapshots
 
 Save the current config and metadata under `.devkit/snapshots/<name>/`:
 
 ```bash
-devkit snapshot create [name]
+envkit snapshot create [name]
 ```
 
 If you omit `name`, a timestamped name is used. List snapshots:
 
 ```bash
-devkit snapshot list
+envkit snapshot list
 ```
 
-Restore a snapshot to `.dev-env.yml`: `devkit snapshot restore <name>`.
+Restore a snapshot to `.dev-env.yml`: `envkit snapshot restore <name>`.
 
 ### 5. Share (export / import)
 
 Export a sanitized copy of your config (passwords and secrets replaced with placeholders like `${DB_PASSWORD}`):
 
 ```bash
-devkit share export
+envkit share export
 ```
 
 Writes to `dev-env.shared.yml` by default. Use `-o <file>` to choose another path.
@@ -88,7 +88,7 @@ Writes to `dev-env.shared.yml` by default. Use `-o <file>` to choose another pat
 Import a shared config file into your project (validates and writes to `.dev-env.yml` by default):
 
 ```bash
-devkit share import path/to/dev-env.shared.yml
+envkit share import path/to/dev-env.shared.yml
 ```
 
 Use `-o <file>` to write to a different path.
@@ -98,21 +98,21 @@ Use `-o <file>` to write to a different path.
 - `-v, --verbose` — more log output  
 - `-q, --quiet` — less output  
 
-Example: `devkit -q setup`
+Example: `envkit -q setup`
 
 ### Quick reference
 
 | Command                      | Description                              |
 |-----------------------------|------------------------------------------|
-| `devkit setup`               | Install deps, run migrations & seed     |
-| `devkit generate`            | Generate docker-compose from config     |
-| `devkit snapshot create [name]` | Save current config to a snapshot  |
-| `devkit snapshot list`       | List snapshots                           |
-| `devkit snapshot restore <name>`  | Restore a snapshot to .dev-env.yml |
-| `devkit share export`          | Export sanitized config (-o file)  |
-| `devkit share import <file>`   | Import shared config (-o file)     |
+| `envkit setup`               | Install deps, run migrations & seed     |
+| `envkit generate`            | Generate docker-compose from config     |
+| `envkit snapshot create [name]` | Save current config to a snapshot  |
+| `envkit snapshot list`       | List snapshots                           |
+| `envkit snapshot restore <name>`  | Restore a snapshot to .dev-env.yml |
+| `envkit share export`          | Export sanitized config (-o file)  |
+| `envkit share import <file>`   | Import shared config (-o file)     |
 
-Use `devkit --help` or `devkit <command> --help` for details.
+Use `envkit --help` or `envkit <command> --help` for details.
 
 ## Testing
 

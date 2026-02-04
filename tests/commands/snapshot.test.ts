@@ -115,7 +115,7 @@ describe('snapshot commands', () => {
         expect.stringContaining('No snapshots found')
       );
       expect(logger.info).toHaveBeenCalledWith(
-        expect.stringContaining('devkit snapshot create')
+        expect.stringContaining('envkit snapshot create')
       );
     });
 
@@ -164,7 +164,7 @@ describe('snapshot commands', () => {
       process.chdir(tempDir);
 
       await expect(runSnapshotRestore('no-such-snap')).rejects.toThrow(
-        /not found|devkit snapshot list/
+        /not found|envkit snapshot list/
       );
     });
 

@@ -18,7 +18,7 @@ import { runShareExport, runShareImport } from '../commands/share';
 const program = new Command();
 
 program
-  .name('devkit')
+  .name('envkit')
   .description('Local Dev Environment Manager - One-command project setup and environment management')
   .version(version);
 

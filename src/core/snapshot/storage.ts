@@ -72,7 +72,7 @@ export async function getSnapshotConfig(projectRoot: string, name: string): Prom
 
   if (!(await fileExists(configPath))) {
     throw new Error(
-      `Snapshot "${safeName}" not found. List snapshots with: devkit snapshot list`
+      `Snapshot "${safeName}" not found. List snapshots with: envkit snapshot list`
     );
   }
 

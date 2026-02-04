@@ -119,7 +119,7 @@ describe('snapshot storage', () => {
 
     it('throws when snapshot does not exist', async () => {
       await expect(getSnapshotConfig(tempDir, 'missing')).rejects.toThrow(
-        /Snapshot "missing" not found|devkit snapshot list/
+        /Snapshot "missing" not found|envkit snapshot list/
       );
     });
   });

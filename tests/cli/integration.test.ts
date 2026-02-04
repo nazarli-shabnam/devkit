@@ -21,9 +21,9 @@ describe('CLI integration', () => {
     expect(out).toMatch(/\d+\.\d+\.\d+/);
   });
 
-  it('--help prints help with devkit and commands', () => {
+  it('--help prints help with envkit and commands', () => {
     const out = runCli(['--help']);
-    expect(out).toMatch(/devkit|dev-env|Local Dev Environment/);
+    expect(out).toMatch(/envkit|dev-env|Local Dev Environment/);
     expect(out).toContain('setup');
     expect(out).toContain('snapshot');
   });
