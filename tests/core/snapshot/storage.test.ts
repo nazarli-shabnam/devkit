@@ -4,6 +4,7 @@ import {
   getSnapshotDir,
   listSnapshots,
   createSnapshot,
+  getSnapshotConfig,
   sanitizeSnapshotName,
   SNAPSHOT_CONFIG_FILENAME,
 } from '../../../src/core/snapshot/storage';
@@ -98,6 +99,28 @@ describe('snapshot storage', () => {
     it('returns .devkit/snapshots under project root', () => {
       const dir = getSnapshotDir(tempDir);
       expect(dir).toBe(path.join(tempDir, '.devkit', 'snapshots'));
+    });
+  });
+
+  describe('getSnapshotConfig', () => {
+    it('returns config YAML when snapshot exists', async () => {
+      const configYaml = 'name: restore-test\nversion: "1.0.0"';
+      await createSnapshot(tempDir, 'my-snap', configYaml);
+
+      const content = await getSnapshotConfig(tempDir, 'my-snap');
+      expect(content).toBe(configYaml);
+    });
+
+    it('uses sanitized name to resolve snapshot', async () => {
+      await createSnapshot(tempDir, 'my snapshot', 'name: x');
+      const content = await getSnapshotConfig(tempDir, 'my snapshot');
+      expect(content).toBe('name: x');
+    });
+
+    it('throws when snapshot does not exist', async () => {
+      await expect(getSnapshotConfig(tempDir, 'missing')).rejects.toThrow(
+        /Snapshot "missing" not found|devkit snapshot list/
+      );
     });
   });
 
