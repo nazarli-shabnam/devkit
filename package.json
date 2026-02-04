@@ -1,6 +1,6 @@
 {
   "name": "envkit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "One-command project setup, environment snapshots, and Docker Compose generation for local development",
   "main": "dist/cli/index.js",
   "bin": {
