@@ -28,6 +28,12 @@ describe('CLI integration', () => {
     expect(out).toContain('snapshot');
   });
 
+  it('snapshot --help shows create, list, restore', () => {
+    const out = runCli(['snapshot', '--help']);
+    expect(out).toMatch(/create|list|restore/);
+    expect(out).toContain('snapshot');
+  });
+
   it('snapshot list runs without error', () => {
     const out = runCli(['snapshot', 'list']);
     expect(out).toBeDefined();
@@ -49,6 +55,24 @@ describe('CLI integration', () => {
       expect(fs.pathExistsSync(path.join(snapshotDir, 'dev-env.yml'))).toBe(true);
       const saved = fs.readFileSync(path.join(snapshotDir, 'dev-env.yml'), 'utf-8');
       expect(saved).toBe(configYaml);
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
+  it('snapshot create without name uses timestamped snapshot name', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-create-unnamed-${Date.now()}`);
+    fs.ensureDirSync(tempDir);
+    fs.writeFileSync(path.join(tempDir, '.dev-env.yml'), 'name: e2e\nversion: "1.0.0"');
+    try {
+      const out = runCli(['snapshot', 'create'], tempDir);
+      expect(out).toMatch(/snapshot-\d{4}-\d{2}-\d{2}T/);
+      expect(out).toMatch(/created|Created/);
+      const snapshotDirPath = path.join(tempDir, '.devkit', 'snapshots');
+      const entries = fs.readdirSync(snapshotDirPath);
+      expect(entries.length).toBe(1);
+      expect(entries[0]).toMatch(/^snapshot-\d{4}-\d{2}-\d{2}T/);
     } finally {
       fs.removeSync(tempDir);
     }
