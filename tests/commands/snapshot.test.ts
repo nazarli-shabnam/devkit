@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import { runSnapshotCreate, runSnapshotList } from '../../src/commands/snapshot';
+import { runSnapshotCreate, runSnapshotList, runSnapshotRestore } from '../../src/commands/snapshot';
 import { listSnapshots } from '../../src/core/snapshot/storage';
 import { logger } from '../../src/utils/logger';
 
@@ -147,6 +147,60 @@ describe('snapshot commands', () => {
       const newIdx = infoCalls.findIndex((s) => s.includes('new'));
       const oldIdx = infoCalls.findIndex((s) => s.includes('old'));
       expect(newIdx).toBeLessThan(oldIdx);
+    });
+  });
+
+  describe('runSnapshotRestore', () => {
+    it('throws when name is empty or whitespace', async () => {
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: x');
+      process.chdir(tempDir);
+
+      await expect(runSnapshotRestore('')).rejects.toThrow(/Snapshot name is required/);
+      await expect(runSnapshotRestore('   ')).rejects.toThrow(/Snapshot name is required/);
+    });
+
+    it('throws when snapshot does not exist', async () => {
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: x');
+      process.chdir(tempDir);
+
+      await expect(runSnapshotRestore('no-such-snap')).rejects.toThrow(
+        /not found|devkit snapshot list/
+      );
+    });
+
+    it('writes snapshot config to .dev-env.yml and calls logger.success', async () => {
+      const configYaml = 'name: restored\nversion: "2.0.0"\ndatabases: []';
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: original');
+      process.chdir(tempDir);
+      await runSnapshotCreate('backup');
+      await fs.writeFile(path.join(tempDir, '.devkit', 'snapshots', 'backup', 'dev-env.yml'), configYaml);
+
+      await runSnapshotRestore('backup');
+
+      const current = await fs.readFile(path.join(tempDir, '.dev-env.yml'), 'utf-8');
+      expect(current).toBe(configYaml);
+      expect(logger.success).toHaveBeenCalledWith(
+        expect.stringContaining('Restored snapshot "backup"')
+      );
+      expect(logger.success).toHaveBeenCalledWith(
+        expect.stringContaining('.dev-env.yml')
+      );
+    });
+
+    it('restores using sanitized name when given name has spaces', async () => {
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: x');
+      process.chdir(tempDir);
+      await runSnapshotCreate('my backup');
+      const configYaml = 'name: from-backup\nversion: "1.0"';
+      await fs.writeFile(
+        path.join(tempDir, '.devkit', 'snapshots', 'my-backup', 'dev-env.yml'),
+        configYaml
+      );
+
+      await runSnapshotRestore('my backup');
+
+      const current = await fs.readFile(path.join(tempDir, '.dev-env.yml'), 'utf-8');
+      expect(current).toBe(configYaml);
     });
   });
 });
