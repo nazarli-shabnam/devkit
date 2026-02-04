@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import { fileExists, readJson, writeFile, writeJson, ensureDir } from '../../utils/file-ops';
+import { fileExists, readFile, readJson, writeFile, writeJson, ensureDir } from '../../utils/file-ops';
 
 export const SNAPSHOT_DIR_NAME = '.devkit';
 export const SNAPSHOTS_SUBDIR = 'snapshots';
@@ -62,4 +62,19 @@ export async function listSnapshots(projectRoot: string): Promise<SnapshotMeta[]
   }
 
   return results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+
+export async function getSnapshotConfig(projectRoot: string, name: string): Promise<string> {
+  const safeName = sanitizeSnapshotName(name) || 'snapshot';
+  const snapshotDir = getSnapshotDir(projectRoot);
+  const configPath = path.join(snapshotDir, safeName, SNAPSHOT_CONFIG_FILENAME);
+
+  if (!(await fileExists(configPath))) {
+    throw new Error(
+      `Snapshot "${safeName}" not found. List snapshots with: devkit snapshot list`
+    );
+  }
+
+  return readFile(configPath);
 }
