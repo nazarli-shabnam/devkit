@@ -124,6 +124,12 @@ describe('file-ops', () => {
   });
 
   describe('findFiles', () => {
+    it('returns empty array when no matches', async () => {
+      await fs.writeFile(path.join(tempDir, 'only.js'), '');
+      const found = await findFiles(tempDir, /\.ts$/);
+      expect(found).toEqual([]);
+    });
+
     it('returns paths matching pattern', async () => {
       await fs.writeFile(path.join(tempDir, 'a.ts'), '');
       await fs.writeFile(path.join(tempDir, 'b.js'), '');

@@ -54,6 +54,10 @@ describe('config schemas', () => {
       const svc = { type: 'rabbitmq', port: 5672, management_port: 15672 };
       expect(ServiceSchema.parse(svc)).toMatchObject(svc);
     });
+
+    it('requires type', () => {
+      expect(() => ServiceSchema.parse({ port: 5672 })).toThrow();
+    });
   });
 
   describe('HealthCheckSchema', () => {
@@ -64,6 +68,11 @@ describe('config schemas', () => {
       expect(
         HealthCheckSchema.parse({ name: 'r', type: 'redis', url: 'redis://localhost' })
       ).toHaveProperty('url', 'redis://localhost');
+    });
+
+    it('rejects missing name or type', () => {
+      expect(() => HealthCheckSchema.parse({ type: 'postgresql' })).toThrow();
+      expect(() => HealthCheckSchema.parse({ name: 'db' })).toThrow();
     });
   });
 

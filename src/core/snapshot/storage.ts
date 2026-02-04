@@ -1,18 +1,41 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import { fileExists } from '../../utils/file-ops';
-import { readJson } from '../../utils/file-ops';
+import { fileExists, readJson, writeFile, writeJson, ensureDir } from '../../utils/file-ops';
 
 export const SNAPSHOT_DIR_NAME = '.devkit';
 export const SNAPSHOTS_SUBDIR = 'snapshots';
+export const SNAPSHOT_CONFIG_FILENAME = 'dev-env.yml';
 
 export interface SnapshotMeta {
   name: string;
   createdAt: string;
 }
 
+export function sanitizeSnapshotName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'snapshot';
+}
+
 export function getSnapshotDir(projectRoot: string): string {
   return path.join(projectRoot, SNAPSHOT_DIR_NAME, SNAPSHOTS_SUBDIR);
+}
+
+export async function createSnapshot(
+  projectRoot: string,
+  name: string,
+  configYaml: string
+): Promise<SnapshotMeta> {
+  const safeName = sanitizeSnapshotName(name) || 'snapshot';
+  const snapshotDir = getSnapshotDir(projectRoot);
+  const snapshotPath = path.join(snapshotDir, safeName);
+  await ensureDir(snapshotPath);
+
+  const createdAt = new Date().toISOString();
+  const meta: SnapshotMeta = { name: safeName, createdAt };
+
+  await writeJson(path.join(snapshotPath, 'metadata.json'), meta, 2);
+  await writeFile(path.join(snapshotPath, SNAPSHOT_CONFIG_FILENAME), configYaml);
+
+  return meta;
 }
 
 export async function listSnapshots(projectRoot: string): Promise<SnapshotMeta[]> {

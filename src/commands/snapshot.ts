@@ -1,6 +1,22 @@
-import { findProjectRoot } from '../core/config/loader';
-import { listSnapshots } from '../core/snapshot/storage';
+import * as path from 'path';
+import { findProjectRoot, loadConfig } from '../core/config/loader';
+import { createSnapshot, listSnapshots } from '../core/snapshot/storage';
+import { readFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
+
+export async function runSnapshotCreate(name?: string): Promise<void> {
+  const projectRoot = await findProjectRoot(process.cwd());
+  await loadConfig(projectRoot);
+
+  const configPath = path.join(projectRoot, '.dev-env.yml');
+  const configYaml = await readFile(configPath);
+
+  const snapshotName =
+    name && name.trim() ? name.trim() : `snapshot-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`;
+  const meta = await createSnapshot(projectRoot, snapshotName, configYaml);
+
+  logger.success(`Snapshot "${meta.name}" created at ${meta.createdAt}`);
+}
 
 export async function runSnapshotList(): Promise<void> {
   const projectRoot = await findProjectRoot(process.cwd());

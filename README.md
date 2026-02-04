@@ -1,8 +1,17 @@
 # devkit
 
-CLI for local development: one-command project setup, environment snapshots, and Docker Compose generation.
+A CLI for local development environments: one-command setup, environment snapshots, and Docker Compose generation from a single config file.
 
 **Requires:** Node.js >= 16
+
+## What it does
+
+- **Setup** — Reads your project’s `.dev-env.yml`, installs dependencies, runs database migrations and seed commands.
+- **Generate** — Produces `docker-compose.yml` from the same config (databases, services, network).
+- **Snapshots** — Save and list copies of your current config under `.devkit/snapshots/<name>/` for later restore.
+- **Share** *(planned)* — Export/import sanitized config for sharing with others (no secrets).
+
+Config is one YAML file plus optional `.env` for secrets; you reference variables with `${VAR_NAME}`. The CLI finds the project root from the current directory (looks for `.dev-env.yml` or `package.json`).
 
 ## Install
 
@@ -12,15 +21,80 @@ npm install -g devkit
 
 Or run without installing: `npx devkit <command>`
 
-## Usage
+## How to use
 
-Add a `.dev-env.yml` in your project root (see [.dev-env.yml.example](./.dev-env.yml.example)), then:
+### 1. Configure your project
+
+In your project root, add a `.dev-env.yml` that describes your dev environment (dependencies, databases, services). Copy and edit the example:
+
+```bash
+cp .dev-env.yml.example .dev-env.yml
+```
+
+See [.dev-env.yml.example](./.dev-env.yml.example) for all options. Use a `.env` file for secrets and reference them in the config with `${VAR_NAME}`.
+
+### 2. Set up the environment
+
+From the project root (or any subdirectory):
 
 ```bash
 devkit setup
 ```
 
-**Commands:** `setup` | `snapshot create|list|restore` | `generate` | `share export|import`
+This installs dependencies, runs database migrations, and runs seed commands according to your config. Options:
+
+| Option        | Description                          |
+|---------------|--------------------------------------|
+| `--skip-deps` | Skip installing dependencies         |
+| `--skip-db`   | Skip database migrations and seed    |
+| `--dry-run`   | Show what would run, without running |
+
+### 3. Generate Docker Compose
+
+To create a `docker-compose.yml` from your `.dev-env.yml` (when `docker.enabled` is true):
+
+```bash
+devkit generate
+```
+
+Use `-o <file>` to write to a different file, e.g. `devkit generate -o docker-compose.dev.yml`.
+
+### 4. Snapshots
+
+Save the current config and metadata under `.devkit/snapshots/<name>/`:
+
+```bash
+devkit snapshot create [name]
+```
+
+If you omit `name`, a timestamped name is used. List snapshots:
+
+```bash
+devkit snapshot list
+```
+
+`snapshot restore` is planned; it will write the snapshot’s config back to `.dev-env.yml`.
+
+### 5. Global options
+
+- `-v, --verbose` — more log output  
+- `-q, --quiet` — less output  
+
+Example: `devkit -q setup`
+
+### Quick reference
+
+| Command                      | Description                              |
+|-----------------------------|------------------------------------------|
+| `devkit setup`               | Install deps, run migrations & seed     |
+| `devkit generate`            | Generate docker-compose from config     |
+| `devkit snapshot create [name]` | Save current config to a snapshot  |
+| `devkit snapshot list`       | List snapshots                           |
+| `devkit snapshot restore [name]` | *(planned)* Restore a snapshot     |
+| `devkit share export`        | *(planned)* Export config for sharing   |
+| `devkit share import <file>` | *(planned)* Import shared config        |
+
+Use `devkit --help` or `devkit <command> --help` for details.
 
 ## Testing
 
