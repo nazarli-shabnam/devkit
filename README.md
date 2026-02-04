@@ -1,8 +1,17 @@
 # devkit
 
-CLI for local development: one-command project setup, environment snapshots, and Docker Compose generation.
+A CLI for local development environments: one-command setup, environment snapshots, and Docker Compose generation from a single config file.
 
 **Requires:** Node.js >= 16
+
+## What it does
+
+- **Setup** — Reads your project’s `.dev-env.yml`, installs dependencies, runs database migrations and seed commands.
+- **Generate** — Produces `docker-compose.yml` from the same config (databases, services, network).
+- **Snapshots** — Save and list copies of your current config under `.devkit/snapshots/<name>/` for later restore.
+- **Share** *(planned)* — Export/import sanitized config for sharing with others (no secrets).
+
+Config is one YAML file plus optional `.env` for secrets; you reference variables with `${VAR_NAME}`. The CLI finds the project root from the current directory (looks for `.dev-env.yml` or `package.json`).
 
 ## Install
 
@@ -16,7 +25,7 @@ Or run without installing: `npx devkit <command>`
 
 ### 1. Configure your project
 
-In your project root, add a `.dev-env.yml` that describes your dev environment (dependencies, databases, services, env vars). Copy and edit the example:
+In your project root, add a `.dev-env.yml` that describes your dev environment (dependencies, databases, services). Copy and edit the example:
 
 ```bash
 cp .dev-env.yml.example .dev-env.yml
@@ -50,15 +59,21 @@ devkit generate
 
 Use `-o <file>` to write to a different file, e.g. `devkit generate -o docker-compose.dev.yml`.
 
-### 4. Snapshots (list only for now)
+### 4. Snapshots
 
-List saved environment snapshots:
+Save the current config and metadata under `.devkit/snapshots/<name>/`:
+
+```bash
+devkit snapshot create [name]
+```
+
+If you omit `name`, a timestamped name is used. List snapshots:
 
 ```bash
 devkit snapshot list
 ```
 
-`snapshot create` and `snapshot restore` are planned; they will save and restore your dev environment state.
+`snapshot restore` is planned; it will write the snapshot’s config back to `.dev-env.yml`.
 
 ### 5. Global options
 
@@ -69,15 +84,15 @@ Example: `devkit -q setup`
 
 ### Quick reference
 
-| Command                    | Description                              |
-|----------------------------|------------------------------------------|
-| `devkit setup`             | Install deps, run migrations & seed     |
-| `devkit generate`         | Generate docker-compose from config     |
-| `devkit snapshot list`    | List snapshots                           |
-| `devkit snapshot create [name]`  | *(coming soon)* Save current state  |
-| `devkit snapshot restore [name]` | *(coming soon)* Restore a snapshot  |
-| `devkit share export`     | *(coming soon)* Export config for sharing |
-| `devkit share import <file>` | *(coming soon)* Import shared config   |
+| Command                      | Description                              |
+|-----------------------------|------------------------------------------|
+| `devkit setup`               | Install deps, run migrations & seed     |
+| `devkit generate`            | Generate docker-compose from config     |
+| `devkit snapshot create [name]` | Save current config to a snapshot  |
+| `devkit snapshot list`       | List snapshots                           |
+| `devkit snapshot restore [name]` | *(planned)* Restore a snapshot     |
+| `devkit share export`        | *(planned)* Export config for sharing   |
+| `devkit share import <file>` | *(planned)* Import shared config        |
 
 Use `devkit --help` or `devkit <command> --help` for details.
 
