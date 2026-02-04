@@ -35,6 +35,11 @@ describe('snapshot storage', () => {
     it('returns snapshot when empty after sanitize', () => {
       expect(sanitizeSnapshotName('...')).toBe('snapshot');
     });
+
+    it('strips leading and trailing dashes', () => {
+      expect(sanitizeSnapshotName('--my-snap--')).toBe('my-snap');
+      expect(sanitizeSnapshotName('-a-')).toBe('a');
+    });
   });
 
   describe('createSnapshot', () => {
@@ -73,6 +78,20 @@ describe('snapshot storage', () => {
       expect(list).toHaveLength(1);
       expect(list[0].name).toBe('listed');
     });
+
+    it('overwrites existing snapshot with same name', async () => {
+      await createSnapshot(tempDir, 'overwrite', 'name: v1');
+      const meta2 = await createSnapshot(tempDir, 'overwrite', 'name: v2\nversion: "2.0"');
+
+      const list = await listSnapshots(tempDir);
+      expect(list).toHaveLength(1);
+      expect(list[0].name).toBe('overwrite');
+      const configPath = path.join(tempDir, '.devkit', 'snapshots', 'overwrite', SNAPSHOT_CONFIG_FILENAME);
+      const content = await fs.readFile(configPath, 'utf-8');
+      expect(content).toContain('v2');
+      expect(content).not.toContain('v1');
+      expect(meta2.createdAt).toBeDefined();
+    });
   });
 
   describe('getSnapshotDir', () => {
@@ -91,6 +110,15 @@ describe('snapshot storage', () => {
     it('returns empty array when snapshot dir is empty', async () => {
       const snapshotDir = path.join(tempDir, '.devkit', 'snapshots');
       await fs.ensureDir(snapshotDir);
+      const list = await listSnapshots(tempDir);
+      expect(list).toEqual([]);
+    });
+
+    it('ignores files in snapshot dir (only directories are snapshots)', async () => {
+      const snapshotDir = path.join(tempDir, '.devkit', 'snapshots');
+      await fs.ensureDir(snapshotDir);
+      await fs.writeFile(path.join(snapshotDir, 'not-a-dir.txt'), '');
+      await fs.writeJson(path.join(snapshotDir, 'metadata.json'), { name: 'file', createdAt: new Date().toISOString() });
       const list = await listSnapshots(tempDir);
       expect(list).toEqual([]);
     });
