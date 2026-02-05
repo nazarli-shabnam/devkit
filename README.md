@@ -16,10 +16,10 @@ Config is one YAML file plus optional `.env` for secrets; you reference variable
 ## Install
 
 ```bash
-npm install -g envkit
+npm install -g dev-env-kit
 ```
 
-Or run without installing: `npx envkit <command>`
+Or run without installing: `npx dev-env-kit <command>`
 
 ## How to use
 

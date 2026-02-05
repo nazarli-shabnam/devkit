@@ -41,11 +41,11 @@ jobs:
           tag_name: ${{ steps.get_version.outputs.tag }}
           name: Release ${{ steps.get_version.outputs.tag }}
           body: |
-            ## envkit ${{ steps.get_version.outputs.version }}
+            ## dev-env-kit ${{ steps.get_version.outputs.version }}
 
             **Install:**
             ```bash
-            npm install -g envkit@${{ steps.get_version.outputs.version }}
+            npm install -g dev-env-kit@${{ steps.get_version.outputs.version }}
             ```
           draft: false
           prerelease: false
