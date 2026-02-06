@@ -12,8 +12,10 @@ const version = packageJson.version;
 
 import { runSetup } from '../commands/setup';
 import { runGenerate } from '../commands/generate';
+import { runInit, isInteractive } from '../commands/init';
 import { runSnapshotCreate, runSnapshotList, runSnapshotRestore } from '../commands/snapshot';
 import { runShareExport, runShareImport } from '../commands/share';
+import { findProjectRoot } from '../core/config/loader';
 
 const program = new Command();
 
@@ -34,6 +36,23 @@ program
 
     const os = detectOS();
     logger.debug(`Running on ${os}`);
+  });
+
+program
+  .command('init')
+  .description('Create .dev-env.yml interactively (wizard)')
+  .action(async () => {
+    try {
+      if (!isInteractive()) {
+        logger.error('Run `envkit init` in a terminal to create a config file.');
+        process.exit(1);
+      }
+      const projectRoot = await findProjectRoot();
+      await runInit(projectRoot);
+    } catch (err: unknown) {
+      logger.error((err as Error).message ?? 'Init failed');
+      process.exit(1);
+    }
   });
 
 program
