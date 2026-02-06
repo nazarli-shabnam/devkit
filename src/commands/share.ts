@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { findProjectRoot, loadConfig } from '../core/config/loader';
+import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
 import { DevEnvConfig, DevEnvConfigSchema } from '../types/config';
 import { fileExists, readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
@@ -41,7 +41,7 @@ export interface ShareExportOptions {
 
 export async function runShareExport(options: ShareExportOptions = {}): Promise<void> {
   const projectRoot = await findProjectRoot(process.cwd());
-  const config = await loadConfig(projectRoot);
+  const config = await loadConfigOrPromptInit(projectRoot);
 
   const sanitized = sanitizeConfigForShare(config);
   const yamlContent = yaml.dump(sanitized, { lineWidth: -1 });

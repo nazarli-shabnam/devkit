@@ -1,12 +1,12 @@
 import * as path from 'path';
-import { findProjectRoot, loadConfig } from '../core/config/loader';
+import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
 import { createSnapshot, listSnapshots, getSnapshotConfig } from '../core/snapshot/storage';
 import { readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
 
 export async function runSnapshotCreate(name?: string): Promise<void> {
   const projectRoot = await findProjectRoot(process.cwd());
-  await loadConfig(projectRoot);
+  await loadConfigOrPromptInit(projectRoot);
 
   const configPath = path.join(projectRoot, '.dev-env.yml');
   const configYaml = await readFile(configPath);

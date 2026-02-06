@@ -1,7 +1,14 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import { loadConfig, loadEnvFile, resolveEnvVars, findProjectRoot } from '../../../src/core/config/loader';
+import prompts from 'prompts';
+import { runInit } from '../../../src/commands/init';
+import { loadConfig, loadConfigOrPromptInit, loadEnvFile, resolveEnvVars, findProjectRoot } from '../../../src/core/config/loader';
 import { logger } from '../../../src/utils/logger';
+
+jest.mock('prompts', () => jest.fn());
+jest.mock('../../../src/commands/init', () => ({
+  runInit: jest.fn(),
+}));
 
 const validConfigYaml = `
 name: test-project
@@ -98,6 +105,54 @@ describe('config loader', () => {
       await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'version: "1.0.0"\ndependencies: []');
 
       await expect(loadConfig(tempDir)).rejects.toThrow(/Invalid configuration/);
+    });
+  });
+
+  describe('loadConfigOrPromptInit', () => {
+    it('throws with a helpful message when missing and not a TTY', async () => {
+      const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean };
+      const original = stdout.isTTY;
+      stdout.isTTY = false;
+      try {
+        await expect(loadConfigOrPromptInit(tempDir)).rejects.toThrow(/envkit init/);
+        await expect(loadConfigOrPromptInit(tempDir)).rejects.toThrow(/Configuration file not found/);
+      } finally {
+        stdout.isTTY = original;
+      }
+    });
+
+    it('prompts and throws when user answers no', async () => {
+      const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean };
+      const original = stdout.isTTY;
+      stdout.isTTY = true;
+      jest.mocked(prompts as any).mockResolvedValueOnce({ value: false });
+      try {
+        await expect(loadConfigOrPromptInit(tempDir)).rejects.toThrow(/envkit init/);
+        expect(prompts).toHaveBeenCalled();
+        expect(runInit).not.toHaveBeenCalled();
+      } finally {
+        stdout.isTTY = original;
+      }
+    });
+
+    it('runs init and then loads config when user answers yes', async () => {
+      const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean };
+      const original = stdout.isTTY;
+      stdout.isTTY = true;
+      jest.mocked(prompts as any).mockResolvedValueOnce({ value: true });
+
+      jest.mocked(runInit).mockImplementationOnce(async (root: string) => {
+        await fs.writeFile(path.join(root, '.dev-env.yml'), validConfigYaml);
+      });
+
+      try {
+        const cfg = await loadConfigOrPromptInit(tempDir);
+        expect(prompts).toHaveBeenCalled();
+        expect(runInit).toHaveBeenCalledWith(tempDir);
+        expect(cfg.name).toBe('test-project');
+      } finally {
+        stdout.isTTY = original;
+      }
     });
   });
 

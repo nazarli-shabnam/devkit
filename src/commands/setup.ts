@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { findProjectRoot, loadConfig } from '../core/config/loader';
+import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
 import { checkConfigWarnings } from '../core/config/validator';
 import type { DevEnvConfig, Dependency } from '../types/config';
 import { logger } from '../utils/logger';
@@ -11,8 +11,6 @@ export interface SetupOptions {
   dryRun?: boolean;
 }
 
- //Parse a command string into executable and args (split on whitespace)
-
 function parseCommand(commandStr: string): { cmd: string; args: string[] } {
   const parts = commandStr.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) {
@@ -20,8 +18,6 @@ function parseCommand(commandStr: string): { cmd: string; args: string[] } {
   }
   return { cmd: parts[0], args: parts.slice(1) };
 }
-
- //Run a single dependency install (command in path with merged env)
 
 async function runDependency(
   dep: Dependency,
@@ -51,7 +47,7 @@ export async function runSetup(options: SetupOptions = {}): Promise<void> {
   const projectRoot = await findProjectRoot(process.cwd());
   logger.debug(`Project root: ${projectRoot}`);
 
-  const config: DevEnvConfig = await loadConfig(projectRoot);
+  const config: DevEnvConfig = await loadConfigOrPromptInit(projectRoot);
   checkConfigWarnings(config);
 
   const env = config.env ?? {};

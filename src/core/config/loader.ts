@@ -1,10 +1,12 @@
 import * as yaml from 'js-yaml';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
+import prompts from 'prompts';
 import { fileExists, readFile } from '../../utils/file-ops';
 import { logger } from '../../utils/logger';
 import { DevEnvConfig, DevEnvConfigSchema } from '../../types/config';
 import { resolvePath } from '../../utils/platform';
+import { runInit } from '../../commands/init';
 
 export async function loadEnvFile(projectRoot: string): Promise<void> {
   const envPath = path.join(projectRoot, '.env');
@@ -17,10 +19,6 @@ export async function loadEnvFile(projectRoot: string): Promise<void> {
   }
 }
 
-/**
- * Resolve environment variable references in strings
- * Supports ${VAR_NAME} syntax
- */
 export function resolveEnvVars(value: string, env: Record<string, string> = {}): string {
   const mergedEnv = { ...process.env, ...env };
   
@@ -33,8 +31,6 @@ export function resolveEnvVars(value: string, env: Record<string, string> = {}):
     return value;
   });
 }
-
- //Load and parse .dev-env.yml configuration file
 
 export async function loadConfig(projectRoot: string = process.cwd()): Promise<DevEnvConfig> {
   const configPath = path.join(projectRoot, '.dev-env.yml');
@@ -81,6 +77,46 @@ export async function loadConfig(projectRoot: string = process.cwd()): Promise<D
   }
 }
 
+/**
+ * Load config, or (when missing) offer to run `envkit init` in interactive terminals.
+ *
+ * - If `.dev-env.yml` exists: behaves like `loadConfig`.
+ * - If missing and not a TTY: throws with a message suggesting `envkit init`.
+ * - If missing and TTY: prompts the user to run init now; on yes, runs init then loads.
+ */
+export async function loadConfigOrPromptInit(projectRoot: string = process.cwd()): Promise<DevEnvConfig> {
+  const configPath = path.join(projectRoot, '.dev-env.yml');
+  const exists = await fileExists(configPath);
+  if (exists) return loadConfig(projectRoot);
+
+  const baseMsg =
+    `Configuration file not found: ${configPath}\n` +
+    `Run \`envkit init\` to create one, or create a .dev-env.yml file in your project root.`;
+
+  if (!process.stdout.isTTY) {
+    throw new Error(baseMsg);
+  }
+
+  const answer = await prompts(
+    {
+      type: 'confirm',
+      name: 'value',
+      message: 'No .dev-env.yml found. Run `envkit init` now?',
+      initial: true,
+    },
+    {
+      onCancel: () => true,
+    }
+  );
+
+  if (!answer?.value) {
+    throw new Error(baseMsg);
+  }
+
+  await runInit(projectRoot);
+  return loadConfig(projectRoot);
+}
+
 function resolveEnvVarsInConfig(obj: any): any {
   if (typeof obj === 'string') {
     return resolveEnvVars(obj);
@@ -95,8 +131,6 @@ function resolveEnvVarsInConfig(obj: any): any {
   }
   return obj;
 }
-
- //Find project root by looking for .dev-env.yml or other project markers
 
 export async function findProjectRoot(startPath: string = process.cwd()): Promise<string> {
   let currentPath = resolvePath(startPath);

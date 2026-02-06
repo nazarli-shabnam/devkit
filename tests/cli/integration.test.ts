@@ -25,7 +25,13 @@ describe('CLI integration', () => {
     const out = runCli(['--help']);
     expect(out).toMatch(/envkit|dev-env|Local Dev Environment/);
     expect(out).toContain('setup');
+    expect(out).toContain('init');
     expect(out).toContain('snapshot');
+  });
+
+  it('init --help shows init command', () => {
+    const out = runCli(['init', '--help']);
+    expect(out).toMatch(/init|\.dev-env\.yml|wizard/);
   });
 
   it('snapshot --help shows create, list, restore', () => {
