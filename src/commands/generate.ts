@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { findProjectRoot, loadConfig } from '../core/config/loader';
+import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
 import { checkConfigWarnings } from '../core/config/validator';
 import { generateComposeContent } from '../core/docker/compose-generator';
 import { logger } from '../utils/logger';
@@ -19,7 +19,7 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
   const projectRoot = await findProjectRoot(process.cwd());
   logger.debug(`Project root: ${projectRoot}`);
 
-  const config = await loadConfig(projectRoot);
+  const config = await loadConfigOrPromptInit(projectRoot);
   checkConfigWarnings(config);
 
   if (config.docker?.enabled === false) {
