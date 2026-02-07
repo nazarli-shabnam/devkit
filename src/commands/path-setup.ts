@@ -71,7 +71,13 @@ function addToPathUnix(binPath: string): void {
 }
 
 export async function runPathSetup(): Promise<void> {
-  const binPath = getNpmGlobalBin();
+  let binPath: string;
+  try {
+    binPath = getNpmGlobalBin();
+  } catch {
+    // e.g. local install or npm not in PATH during postinstall — do nothing
+    return;
+  }
 
   if (isInPath(binPath)) {
     logger.info('envkit is already on your PATH.');
