@@ -134,14 +134,15 @@ Example: `envkit -q setup`
 
 | Command | Description |
 |--------|-------------|
-| `envkit init` | Create `.dev-env.yml` interactively (wizard) |
-| `envkit setup` | Install deps, run migrations and seed |
-| `envkit generate` | Generate docker-compose from config |
-| `envkit snapshot create [name]` | Save current config as a snapshot |
-| `envkit snapshot list` | List snapshots |
-| `envkit snapshot restore <name>` | Restore a snapshot to `.dev-env.yml` |
-| `envkit share export` | Export sanitized config (optional `-o` path) |
-| `envkit share import <file>` | Import shared config (optional `-o` path) |
+| `envkit init` | Create `.dev-env.yml` interactively (wizard). Run from a project folder when you don’t have a config yet. |
+| `envkit setup` | Install dependencies, run database migrations, and run seed commands from your config. Use `--skip-deps`, `--skip-db`, or `--dry-run` to limit what runs. |
+| `envkit generate` | Generate `docker-compose.yml` from your config (requires `docker.enabled` in config). Use `-o <file>` to set the output path. |
+| `envkit snapshot create [name]` | Save the current `.dev-env.yml` as a snapshot under `.devkit/snapshots/`. Omit `name` to use a timestamp. |
+| `envkit snapshot list` | List all saved snapshots. |
+| `envkit snapshot restore <name>` | Restore a snapshot; overwrites `.dev-env.yml`. |
+| `envkit share export` | Export a sanitized config (secrets → placeholders) to share safely. Default output: `dev-env.shared.yml`; use `-o <file>` to override. |
+| `envkit share import <file>` | Import a shared config file; writes to `.dev-env.yml` by default. Use `-o <file>` to write elsewhere. |
+| `envkit path-setup` or `envkit pathsetup` | Add the npm global bin folder to your PATH so `envkit` works from any directory. Use if the shell says “envkit” is not recognized after a global install. |
 
 For more detail: `envkit --help` or `envkit <command> --help`.
 ---
