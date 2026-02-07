@@ -21,7 +21,7 @@
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "prepublishOnly": "npm run build",
-    "postinstall": "node dist/cli/index.js path-setup || true"
+    "postinstall": "node dist/cli/index.js path-setup || node -e \"process.exit(0)\""
   },
   "keywords": [
     "dev-environment",
