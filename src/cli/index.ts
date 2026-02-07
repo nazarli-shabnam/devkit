@@ -15,6 +15,7 @@ import { runGenerate } from '../commands/generate';
 import { runInit, isInteractive } from '../commands/init';
 import { runSnapshotCreate, runSnapshotList, runSnapshotRestore } from '../commands/snapshot';
 import { runShareExport, runShareImport } from '../commands/share';
+import { runPathSetup } from '../commands/path-setup';
 import { findProjectRoot } from '../core/config/loader';
 
 const program = new Command();
@@ -156,6 +157,19 @@ shareCommand
       await runShareImport(file, { output: options.output });
     } catch (err: unknown) {
       logger.error((err as Error).message ?? 'Share import failed');
+      process.exit(1);
+    }
+  });
+
+program
+  .command('path-setup')
+  .alias('pathsetup')
+  .description('Add envkit to your PATH so you can run "envkit" from any folder')
+  .action(async () => {
+    try {
+      await runPathSetup();
+    } catch (err: unknown) {
+      logger.error((err as Error).message ?? 'Path setup failed');
       process.exit(1);
     }
   });
