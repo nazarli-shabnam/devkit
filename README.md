@@ -23,7 +23,14 @@ Configuration is a single YAML file; secrets live in `.env` and are referenced a
 npm install -g dev-env-kit
 ```
 
-After installation, use the `envkit` command. To run without installing:
+After installation you can use either:
+
+- **`envkit <command>`** — short name
+- **`dev-env-kit <command>`** — same, using the package name
+
+After install, **path-setup** runs automatically: if you're in an interactive terminal, you may be prompted to add envkit to your PATH so `envkit` works from any folder. You can run it again anytime with `npx dev-env-kit path-setup` or `npx dev-env-kit pathsetup` (no hyphen; use `pathsetup` if your shell doesn't like `path-setup`).
+
+If the command is still not found, use:
 
 ```bash
 npx dev-env-kit <command>
