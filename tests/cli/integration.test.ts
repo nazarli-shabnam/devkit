@@ -90,6 +90,52 @@ describe('CLI integration', () => {
     expect(out).toContain('generate');
   });
 
+  it('generate writes docker-compose.yml when config has docker enabled', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-generate-${Date.now()}`);
+    fs.ensureDirSync(tempDir);
+    const config = [
+      'name: e2e-generate',
+      'version: "1.0.0"',
+      'databases:',
+      '  - type: postgresql',
+      '    port: 5432',
+      '  - type: redis',
+      '    port: 6379',
+      'docker:',
+      '  enabled: true',
+      '  output_file: docker-compose.yml',
+    ].join('\n');
+    fs.writeFileSync(path.join(tempDir, '.dev-env.yml'), config);
+    try {
+      runCli(['generate'], tempDir);
+      const composePath = path.join(tempDir, 'docker-compose.yml');
+      expect(fs.pathExistsSync(composePath)).toBe(true);
+      const content = fs.readFileSync(composePath, 'utf-8');
+      expect(content).toMatch(/version:|services:/);
+      expect(content).toMatch(/postgres|redis/);
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
+  it('generate -o writes to custom path', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-generate-o-${Date.now()}`);
+    fs.ensureDirSync(tempDir);
+    fs.writeFileSync(
+      path.join(tempDir, '.dev-env.yml'),
+      'name: e2e\ndatabases:\n  - type: redis\n    port: 6379\ndocker:\n  enabled: true'
+    );
+    try {
+      runCli(['generate', '-o', 'my-compose.yml'], tempDir);
+      expect(fs.pathExistsSync(path.join(tempDir, 'my-compose.yml'))).toBe(true);
+      expect(fs.pathExistsSync(path.join(tempDir, 'docker-compose.yml'))).toBe(false);
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
   it('setup --help shows skip and dry-run options', () => {
     const out = runCli(['setup', '--help']);
     expect(out).toMatch(/skip-deps|skip-db|dry-run/);
@@ -177,6 +223,51 @@ describe('CLI integration', () => {
       const content = fs.readFileSync(path.join(tempDir, '.dev-env.yml'), 'utf-8');
       expect(content).toMatch(/name:\s*imported-app|imported-app/);
       expect(content).toMatch(/redis|6379/);
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
+  it('share export -o writes to custom path', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-share-export-o-${Date.now()}`);
+    fs.ensureDirSync(tempDir);
+    fs.writeFileSync(path.join(tempDir, '.dev-env.yml'), 'name: e2e\nversion: "1.0.0"\ndatabases: []');
+    try {
+      runCli(['share', 'export', '-o', 'custom-shared.yml'], tempDir);
+      expect(fs.pathExistsSync(path.join(tempDir, 'custom-shared.yml'))).toBe(true);
+      const content = fs.readFileSync(path.join(tempDir, 'custom-shared.yml'), 'utf-8');
+      expect(content).toMatch(/name:\s*e2e/);
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
+  it('share import -o writes to custom path', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-share-import-o-${Date.now()}`);
+    fs.ensureDirSync(tempDir);
+    const shared = 'name: imported-via-o\nversion: "1.0.0"\ndatabases: []';
+    fs.writeFileSync(path.join(tempDir, 'in.yml'), shared);
+    try {
+      runCli(['share', 'import', 'in.yml', '-o', 'custom-config.yml'], tempDir);
+      expect(fs.pathExistsSync(path.join(tempDir, 'custom-config.yml'))).toBe(true);
+      const content = fs.readFileSync(path.join(tempDir, 'custom-config.yml'), 'utf-8');
+      expect(content).toMatch(/imported-via-o/);
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
+  it('snapshot list shows created snapshot name', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-list-${Date.now()}`);
+    fs.ensureDirSync(tempDir);
+    fs.writeFileSync(path.join(tempDir, '.dev-env.yml'), 'name: e2e\nversion: "1.0.0"');
+    runCli(['snapshot', 'create', 'list-test-snap'], tempDir);
+    try {
+      const out = runCli(['snapshot', 'list'], tempDir);
+      expect(out).toContain('list-test-snap');
     } finally {
       fs.removeSync(tempDir);
     }

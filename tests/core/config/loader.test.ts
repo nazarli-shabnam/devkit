@@ -109,6 +109,14 @@ describe('config loader', () => {
   });
 
   describe('loadConfigOrPromptInit', () => {
+    it('returns config without prompting when .dev-env.yml exists', async () => {
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), validConfigYaml);
+      const cfg = await loadConfigOrPromptInit(tempDir);
+      expect(cfg.name).toBe('test-project');
+      expect(prompts).not.toHaveBeenCalled();
+      expect(runInit).not.toHaveBeenCalled();
+    });
+
     it('throws with a helpful message when missing and not a TTY', async () => {
       const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean };
       const original = stdout.isTTY;

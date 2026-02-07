@@ -46,6 +46,12 @@ describe('init command', () => {
       const name = await getDefaultProjectName(tempDir);
       expect(name).toBe(path.basename(tempDir));
     });
+
+    it('returns directory basename when package.json is invalid JSON', async () => {
+      await fs.writeFile(path.join(tempDir, 'package.json'), 'not valid json {');
+      const name = await getDefaultProjectName(tempDir);
+      expect(name).toBe(path.basename(tempDir));
+    });
   });
 
   describe('isInteractive', () => {
