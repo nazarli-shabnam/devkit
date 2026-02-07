@@ -136,8 +136,7 @@ Example: `envkit -q setup`
 | `envkit share export` | Export sanitized config (optional `-o` path) |
 | `envkit share import <file>` | Import shared config (optional `-o` path) |
 
-For more detail: `envkit --help` or `envkit <command> --help`. A short **“what to run when”** guide is in [DOCUMENTATION.md](./DOCUMENTATION.md).
-
+For more detail: `envkit --help` or `envkit <command> --help`.
 ---
 
 ## Development and testing
@@ -149,7 +148,7 @@ npm install
 npm test
 ```
 
-Use `npm test -- --coverage` for a coverage report. See [DEVELOPMENT.md](./DEVELOPMENT.md) for the full contributor guide.
+Use `npm test -- --coverage` for a coverage report.
 
 ---
 
