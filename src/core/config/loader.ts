@@ -46,7 +46,7 @@ export async function loadConfig(projectRoot: string = process.cwd()): Promise<D
     await loadEnvFile(projectRoot);
 
     const content = await readFile(configPath);
-    const rawConfig = yaml.load(content) as any;
+    const rawConfig = yaml.load(content, { schema: yaml.DEFAULT_SCHEMA }) as any;
 
     const resolvedConfig = resolveEnvVarsInConfig(rawConfig);
 

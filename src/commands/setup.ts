@@ -12,7 +12,33 @@ export interface SetupOptions {
 }
 
 function parseCommand(commandStr: string): { cmd: string; args: string[] } {
-  const parts = commandStr.trim().split(/\s+/).filter(Boolean);
+  const trimmed = commandStr.trim();
+  if (!trimmed) {
+    throw new Error('Empty command');
+  }
+
+  const parts: string[] = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+    } else if (/\s/.test(ch) && !inSingle && !inDouble) {
+      if (current) {
+        parts.push(current);
+        current = '';
+      }
+    } else {
+      current += ch;
+    }
+  }
+  if (current) parts.push(current);
+
   if (parts.length === 0) {
     throw new Error('Empty command');
   }

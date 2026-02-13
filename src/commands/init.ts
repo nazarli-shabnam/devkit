@@ -114,18 +114,20 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     }
   }
 
-  const addDb = await prompts(
-    {
-      type: 'confirm',
-      name: 'value',
-      message: 'Add a database? (optional)',
-      initial: false,
-    },
-    { onCancel: () => process.exit(0) }
-  );
-
   const databases: Database[] = [];
-  if (addDb.value) {
+  let addMoreDbs = true;
+  while (addMoreDbs) {
+    const addDb = await prompts(
+      {
+        type: 'confirm',
+        name: 'value',
+        message: databases.length === 0 ? 'Add a database? (optional)' : 'Add another database?',
+        initial: databases.length === 0 ? false : false,
+      },
+      { onCancel: () => process.exit(0) }
+    );
+    if (!addDb.value) break;
+
     const dbChoice = await prompts(
       {
         type: 'select',
@@ -135,65 +137,75 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
       },
       { onCancel: () => process.exit(0) }
     );
-    if (dbChoice.type !== 'none') {
-      const dbPrompts: prompts.PromptObject[] = [
-        { type: 'text', name: 'name', message: 'Database name (optional)', initial: 'db' },
-        { type: 'text', name: 'version', message: 'Version (e.g. 15 for Postgres)', initial: '15' },
-        { type: 'number', name: 'port', message: 'Port', initial: dbChoice.type === 'redis' ? 6379 : 5432 },
-        { type: 'text', name: 'host', message: 'Host', initial: 'localhost' },
-        { type: 'text', name: 'user', message: 'User (use ${DB_USER} for .env)', initial: '${DB_USER}' },
-        { type: 'text', name: 'password', message: 'Password (use ${DB_PASSWORD} for .env)', initial: '${DB_PASSWORD}' },
-      ];
-      if (dbChoice.type !== 'redis' && dbChoice.type !== 'sqlite') {
-        dbPrompts.push({ type: 'text', name: 'database', message: 'Database name', initial: 'myapp' });
-      }
-      const dbAnswers = await prompts(dbPrompts, { onCancel: () => process.exit(0) });
-      const db: Database = {
-        type: dbChoice.type as Database['type'],
-        name: dbAnswers.name || undefined,
-        version: dbAnswers.version || undefined,
-        port: dbAnswers.port,
-        host: dbAnswers.host || 'localhost',
-        user: dbAnswers.user || undefined,
-        password: dbAnswers.password || undefined,
-        database: dbAnswers.database || undefined,
-      };
-      const addMigrations = await prompts(
-        { type: 'confirm', name: 'value', message: 'Add migrations?', initial: false },
-        { onCancel: () => process.exit(0) }
-      );
-      if (addMigrations.value) {
-        const mig = await prompts(
-          [
-            { type: 'text', name: 'path', message: 'Migrations path', initial: './migrations' },
-            { type: 'text', name: 'command', message: 'Migrations command', initial: 'npm run migrate' },
-          ],
-          { onCancel: () => process.exit(0) }
-        );
-        db.migrations = [{ path: mig.path || './migrations', command: mig.command || 'npm run migrate' }];
-      }
-      const addSeed = await prompts(
-        { type: 'confirm', name: 'value', message: 'Add seed command?', initial: false },
-        { onCancel: () => process.exit(0) }
-      );
-      if (addSeed.value) {
-        const seedCmd = await prompts(
-          { type: 'text', name: 'command', message: 'Seed command', initial: 'npm run seed' },
-          { onCancel: () => process.exit(0) }
-        );
-        db.seed = { command: seedCmd.command || 'npm run seed' };
-      }
-      databases.push(db);
+    if (dbChoice.type === 'none') break;
+
+    const DB_DEFAULT_PORTS: Record<string, number> = {
+      postgresql: 5432, mysql: 3306, mariadb: 3306, mongodb: 27017, redis: 6379, sqlite: 0,
+    };
+    const dbPrompts: prompts.PromptObject[] = [
+      { type: 'text', name: 'name', message: 'Database name (optional)', initial: 'db' },
+      { type: 'text', name: 'version', message: 'Version (e.g. 15 for Postgres)', initial: '15' },
+      { type: 'number', name: 'port', message: 'Port', initial: DB_DEFAULT_PORTS[dbChoice.type] ?? 5432 },
+      { type: 'text', name: 'host', message: 'Host', initial: 'localhost' },
+      { type: 'text', name: 'user', message: 'User (use ${DB_USER} for .env)', initial: '${DB_USER}' },
+      { type: 'text', name: 'password', message: 'Password (use ${DB_PASSWORD} for .env)', initial: '${DB_PASSWORD}' },
+    ];
+    if (dbChoice.type !== 'redis' && dbChoice.type !== 'sqlite') {
+      dbPrompts.push({ type: 'text', name: 'database', message: 'Database name', initial: 'myapp' });
     }
+    const dbAnswers = await prompts(dbPrompts, { onCancel: () => process.exit(0) });
+    const db: Database = {
+      type: dbChoice.type as Database['type'],
+      name: dbAnswers.name || undefined,
+      version: dbAnswers.version || undefined,
+      port: dbAnswers.port,
+      host: dbAnswers.host || 'localhost',
+      user: dbAnswers.user || undefined,
+      password: dbAnswers.password || undefined,
+      database: dbAnswers.database || undefined,
+    };
+    const addMigrations = await prompts(
+      { type: 'confirm', name: 'value', message: 'Add migrations?', initial: false },
+      { onCancel: () => process.exit(0) }
+    );
+    if (addMigrations.value) {
+      const mig = await prompts(
+        [
+          { type: 'text', name: 'path', message: 'Migrations path', initial: './migrations' },
+          { type: 'text', name: 'command', message: 'Migrations command', initial: 'npm run migrate' },
+        ],
+        { onCancel: () => process.exit(0) }
+      );
+      db.migrations = [{ path: mig.path || './migrations', command: mig.command || 'npm run migrate' }];
+    }
+    const addSeed = await prompts(
+      { type: 'confirm', name: 'value', message: 'Add seed command?', initial: false },
+      { onCancel: () => process.exit(0) }
+    );
+    if (addSeed.value) {
+      const seedCmd = await prompts(
+        { type: 'text', name: 'command', message: 'Seed command', initial: 'npm run seed' },
+        { onCancel: () => process.exit(0) }
+      );
+      db.seed = { command: seedCmd.command || 'npm run seed' };
+    }
+    databases.push(db);
   }
 
-  const addService = await prompts(
-    { type: 'confirm', name: 'value', message: 'Add a service (e.g. RabbitMQ, Redis)? (optional)', initial: false },
-    { onCancel: () => process.exit(0) }
-  );
-
   const services: Service[] = [];
-  if (addService.value) {
+  let addMoreSvc = true;
+  while (addMoreSvc) {
+    const addService = await prompts(
+      {
+        type: 'confirm',
+        name: 'value',
+        message: services.length === 0 ? 'Add a service (e.g. RabbitMQ, Redis)? (optional)' : 'Add another service?',
+        initial: false,
+      },
+      { onCancel: () => process.exit(0) }
+    );
+    if (!addService.value) break;
+
     const svc = await prompts(
       [
         { type: 'text', name: 'type', message: 'Service type', initial: 'rabbitmq' },
@@ -243,40 +255,49 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     exclude_paths: ['node_modules', '.git', 'dist', 'build'],
   };
 
-  let health_checks: HealthCheck[] = [];
-  if (databases.length > 0 && (databases[0].type === 'postgresql' || databases[0].type === 'mysql' || databases[0].type === 'mongodb' || databases[0].type === 'redis')) {
+  const health_checks: HealthCheck[] = [];
+  const healthEligible = databases.filter(
+    (d) => d.type === 'postgresql' || d.type === 'mysql' || d.type === 'mariadb' || d.type === 'mongodb' || d.type === 'redis'
+  );
+  if (healthEligible.length > 0) {
     const addHealth = await prompts(
-      { type: 'confirm', name: 'value', message: 'Add a health check for the database? (optional)', initial: true },
+      {
+        type: 'confirm',
+        name: 'value',
+        message: healthEligible.length === 1
+          ? `Add a health check for ${healthEligible[0].name || healthEligible[0].type}? (optional)`
+          : `Add health checks for your ${healthEligible.length} databases? (optional)`,
+        initial: true,
+      },
       { onCancel: () => process.exit(0) }
     );
     if (addHealth.value) {
-      const db = databases[0];
-      if (db.type === 'redis') {
-        health_checks = [{ name: 'redis', type: 'redis', url: `redis://${db.host || 'localhost'}:${db.port || 6379}` }];
-      } else if (db.type === 'postgresql') {
-        health_checks = [
-          {
-            name: 'database',
+      const DB_DEFAULT_HC_PORTS: Record<string, number> = {
+        postgresql: 5432, mysql: 3306, mariadb: 3306, mongodb: 27017, redis: 6379,
+      };
+      for (const db of healthEligible) {
+        const port = db.port ?? DB_DEFAULT_HC_PORTS[db.type] ?? 5432;
+        if (db.type === 'redis') {
+          health_checks.push({ name: db.name || 'redis', type: 'redis', url: `redis://${db.host || 'localhost'}:${port}` });
+        } else if (db.type === 'postgresql') {
+          health_checks.push({
+            name: db.name || 'database',
             type: 'postgresql',
-            connection_string: `postgresql://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${db.port || 5432}/${db.database || 'myapp'}`,
-          },
-        ];
-      } else if (db.type === 'mysql' || db.type === 'mariadb') {
-        health_checks = [
-          {
-            name: 'database',
+            connection_string: `postgresql://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${port}/${db.database || 'myapp'}`,
+          });
+        } else if (db.type === 'mysql' || db.type === 'mariadb') {
+          health_checks.push({
+            name: db.name || 'database',
             type: db.type,
-            connection_string: `mysql://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${db.port || 3306}/${db.database || 'myapp'}`,
-          },
-        ];
-      } else if (db.type === 'mongodb') {
-        health_checks = [
-          {
-            name: 'database',
+            connection_string: `mysql://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${port}/${db.database || 'myapp'}`,
+          });
+        } else if (db.type === 'mongodb') {
+          health_checks.push({
+            name: db.name || 'database',
             type: 'mongodb',
-            connection_string: `mongodb://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${db.port || 27017}/${db.database || 'myapp'}`,
-          },
-        ];
+            connection_string: `mongodb://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${port}/${db.database || 'myapp'}`,
+          });
+        }
       }
     }
   }

@@ -27,6 +27,13 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
     return;
   }
 
+  if (!path.isAbsolute(outputFile)) {
+    const resolved = path.resolve(process.cwd(), outputFile);
+    if (!resolved.startsWith(process.cwd())) {
+      throw new Error(`Output path "${outputFile}" would write outside the working directory. Use an absolute path if intended.`);
+    }
+  }
+
   const templatesDir = getTemplatesDir();
   const content = generateComposeContent(config, templatesDir);
   const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);

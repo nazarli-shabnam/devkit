@@ -26,7 +26,7 @@ const DB_IMAGES: Record<string, string> = {
 function buildHealthcheckForService(
   serviceName: string,
   serviceType: string,
-  port: number,
+  _port: number,
   healthChecks: HealthCheck[] | undefined
 ): string | undefined {
   const matched = healthChecks?.find(
@@ -37,7 +37,7 @@ function buildHealthcheckForService(
       matched.type === 'redis'
         ? ['CMD', 'redis-cli', 'ping']
         : matched.type === 'postgresql'
-          ? ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
+          ? ['CMD-SHELL', 'pg_isready']
           : matched.type === 'mysql' || matched.type === 'mariadb'
             ? ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
             : matched.type === 'mongodb'
@@ -49,7 +49,7 @@ function buildHealthcheckForService(
     }
   }
   const defaults: Record<string, string[]> = {
-    postgresql: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}'],
+    postgresql: ['CMD-SHELL', 'pg_isready'],
     mysql: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost'],
     mariadb: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost'],
     mongodb: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"],
@@ -69,8 +69,11 @@ function databaseToComposeService(
   const image = DB_IMAGES[db.type];
   if (!image) return null;
 
+  const DB_DEFAULT_PORTS: Record<string, number> = {
+    postgresql: 5432, mysql: 3306, mariadb: 3306, mongodb: 27017, redis: 6379,
+  };
   const name = db.name ?? `${db.type}_${index + 1}`.replace(/-/g, '_');
-  const port = db.port ?? (db.type === 'postgresql' ? 5432 : db.type === 'redis' ? 6379 : db.type === 'mysql' || db.type === 'mariadb' ? 3306 : 27017);
+  const port = db.port ?? DB_DEFAULT_PORTS[db.type] ?? 5432;
   const ports = [`${port}:${port}`];
 
   const env: Record<string, string> = {};

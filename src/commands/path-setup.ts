@@ -22,7 +22,11 @@ function isInPath(pathToCheck: string): boolean {
   const sep = process.platform === 'win32' ? ';' : ':';
   const parts = pathEnv.split(sep).map((p) => p.trim());
   const normalized = path.normalize(pathToCheck);
-  return parts.some((p) => path.normalize(p) === normalized || p === pathToCheck);
+  if (process.platform === 'win32') {
+    const normalizedLower = normalized.toLowerCase();
+    return parts.some((p) => path.normalize(p).toLowerCase() === normalizedLower);
+  }
+  return parts.some((p) => path.normalize(p) === normalized);
 }
 
 function addToPathWindows(binPath: string): void {
@@ -49,6 +53,10 @@ $newPath = $current + $PathToAdd
 }
 
 function addToPathUnix(binPath: string): void {
+  // Validate binPath to prevent shell metacharacter injection in rc files
+  if (/[`$"\\;|&!(){}]/.test(binPath)) {
+    throw new Error(`Unsafe characters in bin path: ${binPath}`);
+  }
   const home = getHomeDirectory();
   const exportLine = `\nexport PATH="$PATH:${binPath}"\n`;
   const candidates = [path.join(home, '.zshrc'), path.join(home, '.bashrc'), path.join(home, '.profile')];

@@ -6,9 +6,14 @@ import { detectOS } from '../utils/platform';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const packageJsonPath = path.join(__dirname, '../../package.json');
-const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-const version = packageJson.version;
+let version = '0.0.0';
+try {
+  const packageJsonPath = path.join(__dirname, '../../package.json');
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+  version = packageJson.version ?? '0.0.0';
+} catch {
+  // Fallback if package.json cannot be read (e.g. bundled builds)
+}
 
 import { runSetup } from '../commands/setup';
 import { runGenerate } from '../commands/generate';
