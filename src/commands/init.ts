@@ -115,8 +115,8 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
   }
 
   const databases: Database[] = [];
-  let addMoreDbs = true;
-  while (addMoreDbs) {
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
     const addDb = await prompts(
       {
         type: 'confirm',
@@ -193,8 +193,8 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
   }
 
   const services: Service[] = [];
-  let addMoreSvc = true;
-  while (addMoreSvc) {
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
     const addService = await prompts(
       {
         type: 'confirm',
