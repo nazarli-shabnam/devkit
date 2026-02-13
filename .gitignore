@@ -34,7 +34,8 @@ coverage/
 
 # Snapshots (user data)
 .snapshots/
-
+*.md
+!README.md 
 # Temporary files
 tmp/
 temp/
