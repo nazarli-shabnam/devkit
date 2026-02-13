@@ -143,10 +143,10 @@ describe('setup command', () => {
     await runSetup({ skipDeps: true, skipDb: false });
 
     expect(execFn).toHaveBeenCalled();
-    const calls = (execFn as jest.Mock).mock.calls;
-    const migrateCall = calls.find((c: unknown[]) => String(c[0]).includes('npm') && String(c[1]?.[0]).includes('migrate'));
+    const calls = (execFn as jest.Mock).mock.calls as [string, string[], Record<string, unknown>][];
+    const migrateCall = calls.find((c) => c[0] === 'npm' && c[1].includes('migrate'));
     expect(migrateCall).toBeDefined();
-    const seedCall = calls.find((c: unknown[]) => String(c[1]?.[0]).includes('seed'));
+    const seedCall = calls.find((c) => c[0] === 'npm' && c[1].includes('seed'));
     expect(seedCall).toBeDefined();
   });
 });

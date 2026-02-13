@@ -40,9 +40,12 @@ describe('config loader', () => {
 
     it('uses process.env when not in provided env', () => {
       process.env.TEST_RESOLVE_VAR = 'from-process';
-      const result = resolveEnvVars('value: ${TEST_RESOLVE_VAR}');
-      expect(result).toBe('value: from-process');
-      delete process.env.TEST_RESOLVE_VAR;
+      try {
+        const result = resolveEnvVars('value: ${TEST_RESOLVE_VAR}');
+        expect(result).toBe('value: from-process');
+      } finally {
+        delete process.env.TEST_RESOLVE_VAR;
+      }
     });
 
     it('leaves unresolved var as-is and logs warning', () => {
@@ -59,9 +62,25 @@ describe('config loader', () => {
 
     it('provided env overrides process.env for same key', () => {
       process.env.OVERRIDE_TEST = 'process';
-      const result = resolveEnvVars('${OVERRIDE_TEST}', { OVERRIDE_TEST: 'provided' });
-      expect(result).toBe('provided');
-      delete process.env.OVERRIDE_TEST;
+      try {
+        const result = resolveEnvVars('${OVERRIDE_TEST}', { OVERRIDE_TEST: 'provided' });
+        expect(result).toBe('provided');
+      } finally {
+        delete process.env.OVERRIDE_TEST;
+      }
+    });
+
+    it('resolves nested env vars recursively', () => {
+      const result = resolveEnvVars('${OUTER}', { OUTER: '${INNER}', INNER: 'final' });
+      expect(result).toBe('final');
+    });
+
+    it('stops recursion when max depth reached', () => {
+      const warnSpy = jest.spyOn(logger, 'warn').mockImplementation();
+      // Self-referencing variable — should stop and leave as-is
+      const result = resolveEnvVars('${LOOP}', { LOOP: '${LOOP}' });
+      expect(result).toBe('${LOOP}');
+      warnSpy.mockRestore();
     });
   });
 
@@ -72,9 +91,12 @@ describe('config loader', () => {
 
     it('loads .env when present', async () => {
       await fs.writeFile(path.join(tempDir, '.env'), 'LOADER_TEST=loaded\n');
-      await loadEnvFile(tempDir);
-      expect(process.env.LOADER_TEST).toBe('loaded');
-      delete process.env.LOADER_TEST;
+      try {
+        await loadEnvFile(tempDir);
+        expect(process.env.LOADER_TEST).toBe('loaded');
+      } finally {
+        delete process.env.LOADER_TEST;
+      }
     });
   });
 
@@ -115,9 +137,12 @@ describe('config loader', () => {
         path.join(tempDir, '.dev-env.yml'),
         'name: ${APP_NAME}\nversion: "1.0.0"\ndatabases: []'
       );
-      const config = await loadConfig(tempDir);
-      expect(config.name).toBe('resolved-app');
-      delete process.env.APP_NAME;
+      try {
+        const config = await loadConfig(tempDir);
+        expect(config.name).toBe('resolved-app');
+      } finally {
+        delete process.env.APP_NAME;
+      }
     });
 
     it('resolves ${VAR} in nested strings (env, connection_string)', async () => {
@@ -126,9 +151,12 @@ describe('config loader', () => {
         path.join(tempDir, '.dev-env.yml'),
         'name: n\nversion: "1.0.0"\nenv:\n  KEY: ${SECRET}\ndatabases: []'
       );
-      const config = await loadConfig(tempDir);
-      expect(config.env?.KEY).toBe('xyz');
-      delete process.env.SECRET;
+      try {
+        const config = await loadConfig(tempDir);
+        expect(config.env?.KEY).toBe('xyz');
+      } finally {
+        delete process.env.SECRET;
+      }
     });
   });
 

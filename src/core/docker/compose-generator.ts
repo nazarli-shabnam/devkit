@@ -132,16 +132,33 @@ function loadComposeTemplate(templatesDir: string): string {
 
 export function generateComposeContent(config: DevEnvConfig, templatesDir: string): string {
   const services: ComposeService[] = [];
+  const usedNames = new Set<string>();
+
+  function deduplicateName(name: string): string {
+    let candidate = name;
+    let suffix = 2;
+    while (usedNames.has(candidate)) {
+      candidate = `${name}_${suffix}`;
+      suffix++;
+    }
+    usedNames.add(candidate);
+    return candidate;
+  }
 
   const healthChecks = config.health_checks;
 
   config.databases?.forEach((db, i) => {
     const s = databaseToComposeService(db, i, healthChecks);
-    if (s) services.push(s);
+    if (s) {
+      s.name = deduplicateName(s.name);
+      services.push(s);
+    }
   });
 
   config.services?.forEach((svc, i) => {
-    services.push(serviceToComposeService(svc, i));
+    const s = serviceToComposeService(svc, i);
+    s.name = deduplicateName(s.name);
+    services.push(s);
   });
 
   const networkName = config.docker?.network_name ?? 'dev-network';

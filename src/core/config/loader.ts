@@ -21,15 +21,22 @@ export async function loadEnvFile(projectRoot: string): Promise<void> {
 
 export function resolveEnvVars(value: string, env: Record<string, string> = {}): string {
   const mergedEnv = { ...process.env, ...env };
-  
-  return value.replace(/\$\{([^}]+)\}/g, (match, varName) => {
-    const value = mergedEnv[varName];
-    if (value === undefined) {
-      logger.warn(`Environment variable ${varName} is not set`);
-      return match;
-    }
-    return value;
-  });
+  const MAX_DEPTH = 10;
+
+  let result = value;
+  for (let depth = 0; depth < MAX_DEPTH; depth++) {
+    const prev = result;
+    result = result.replace(/\$\{([^}]+)\}/g, (match, varName) => {
+      const resolved = mergedEnv[varName];
+      if (resolved === undefined) {
+        logger.warn(`Environment variable ${varName} is not set`);
+        return match;
+      }
+      return resolved;
+    });
+    if (result === prev) break; // no more substitutions
+  }
+  return result;
 }
 
 export async function loadConfig(projectRoot: string = process.cwd()): Promise<DevEnvConfig> {

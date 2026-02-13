@@ -107,6 +107,21 @@ describe('compose-generator', () => {
       expect(content).toContain('interval: 10s');
     });
 
+    it('deduplicates service names when databases would collide', () => {
+      const config = {
+        name: 'app',
+        databases: [
+          { type: 'postgresql' as const, name: 'db', port: 5432, host: 'localhost' },
+          { type: 'postgresql' as const, name: 'db', port: 5433, host: 'localhost' },
+        ],
+        docker: { network_name: 'dev-network' },
+      } as DevEnvConfig;
+      const content = generateComposeContent(config, templatesDir);
+      // First one keeps name "db", second should get "db_2"
+      expect(content).toContain('db:');
+      expect(content).toContain('db_2:');
+    });
+
     it('throws when templates dir has no docker-compose.hbs', () => {
       const fs = require('fs');
       const os = require('os');

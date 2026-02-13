@@ -34,8 +34,26 @@ export function sanitizeConfigForShare(config: DevEnvConfig): DevEnvConfig {
       const { connection_string, url, ...rest } = h;
       const sanitized: typeof h = { ...rest };
       if (connection_string) sanitized.connection_string = '${CONNECTION_STRING}';
-      if (url && (url.includes('://') && url.includes('@'))) sanitized.url = '${HEALTH_CHECK_URL}';
-      else if (url) sanitized.url = url;
+      if (url) {
+        let hasCredentials = false;
+        try {
+          const parsed = new URL(url);
+          hasCredentials = !!(parsed.username || parsed.password);
+          if (!hasCredentials) {
+            // Check query params for common credential keys
+            for (const key of parsed.searchParams.keys()) {
+              if (/password|secret|token|key|auth/i.test(key)) {
+                hasCredentials = true;
+                break;
+              }
+            }
+          }
+        } catch {
+          // Not a valid URL — check for @ as fallback (e.g. user:pass@host)
+          hasCredentials = url.includes('@');
+        }
+        sanitized.url = hasCredentials ? '${HEALTH_CHECK_URL}' : url;
+      }
       return sanitized;
     }) ?? [],
   };

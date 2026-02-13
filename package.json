@@ -1,6 +1,6 @@
 {
   "name": "dev-env-kit",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "One-command project setup, environment snapshots, and Docker Compose generation for local development",
   "main": "dist/cli/index.js",
   "bin": {

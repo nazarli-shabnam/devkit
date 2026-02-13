@@ -91,6 +91,39 @@ describe('share command', () => {
       const out = sanitizeConfigForShare(config as any);
       expect(out.health_checks![0].url).toBe('https://example.com/health');
     });
+
+    it('sanitizes url with credentials in query params (password=)', () => {
+      const config = {
+        name: 'test',
+        health_checks: [
+          { name: 'svc', type: 'http', url: 'https://example.com/check?password=secret&foo=bar' },
+        ],
+      };
+      const out = sanitizeConfigForShare(config as any);
+      expect(out.health_checks![0].url).toBe('${HEALTH_CHECK_URL}');
+    });
+
+    it('sanitizes url with userinfo (user:pass@host)', () => {
+      const config = {
+        name: 'test',
+        health_checks: [
+          { name: 'svc', type: 'http', url: 'https://admin:s3cret@api.example.com/health' },
+        ],
+      };
+      const out = sanitizeConfigForShare(config as any);
+      expect(out.health_checks![0].url).toBe('${HEALTH_CHECK_URL}');
+    });
+
+    it('leaves plain redis url without credentials unchanged', () => {
+      const config = {
+        name: 'test',
+        health_checks: [
+          { name: 'cache', type: 'redis', url: 'redis://localhost:6379' },
+        ],
+      };
+      const out = sanitizeConfigForShare(config as any);
+      expect(out.health_checks![0].url).toBe('redis://localhost:6379');
+    });
   });
 
   describe('runShareExport', () => {
