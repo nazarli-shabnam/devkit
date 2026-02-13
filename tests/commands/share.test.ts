@@ -67,6 +67,30 @@ describe('share command', () => {
       expect(out.databases![0].port).toBe(6379);
       expect(out.databases![0]).not.toHaveProperty('password');
     });
+
+    it('sanitizes health_checks connection_string and url with credentials', () => {
+      const config = {
+        name: 'test',
+        databases: [],
+        health_checks: [
+          { name: 'db', type: 'postgresql', connection_string: 'postgres://u:p@host/db' },
+          { name: 'api', type: 'http', url: 'https://user:pass@example.com/health' },
+        ],
+      };
+      const out = sanitizeConfigForShare(config as any);
+      expect(out.health_checks).toHaveLength(2);
+      expect(out.health_checks![0].connection_string).toBe('${CONNECTION_STRING}');
+      expect(out.health_checks![1].url).toBe('${HEALTH_CHECK_URL}');
+    });
+
+    it('leaves health_checks url without credentials unchanged', () => {
+      const config = {
+        name: 'test',
+        health_checks: [{ name: 'ping', type: 'http', url: 'https://example.com/health' }],
+      };
+      const out = sanitizeConfigForShare(config as any);
+      expect(out.health_checks![0].url).toBe('https://example.com/health');
+    });
   });
 
   describe('runShareExport', () => {
@@ -103,6 +127,31 @@ describe('share command', () => {
       expect(logger.success).toHaveBeenCalledWith(
         expect.stringContaining('dev-env.shared.yml')
       );
+    });
+
+    it('writes to cwd (not project root) when run from subdirectory', async () => {
+      const subDir = path.join(tempDir, 'sub', 'deep');
+      await fs.ensureDir(subDir);
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: root\nversion: "1.0.0"\ndatabases: []');
+      process.chdir(subDir);
+
+      await runShareExport({ output: 'my-export.yml' });
+
+      const inCwd = path.join(subDir, 'my-export.yml');
+      const inRoot = path.join(tempDir, 'my-export.yml');
+      expect(await fs.pathExists(inCwd)).toBe(true);
+      expect(await fs.pathExists(inRoot)).toBe(false);
+      const content = await fs.readFile(inCwd, 'utf-8');
+      expect(content).toMatch(/name:\s*root/);
+    });
+
+    it('uses default output filename when output is empty string', async () => {
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: x\nversion: "1.0.0"\ndatabases: []');
+      process.chdir(tempDir);
+
+      await runShareExport({ output: '' });
+
+      expect(await fs.pathExists(path.join(tempDir, 'dev-env.shared.yml'))).toBe(true);
     });
   });
 
@@ -147,6 +196,23 @@ describe('share command', () => {
       expect(logger.success).toHaveBeenCalledWith(
         expect.stringContaining('.dev-env.yml')
       );
+    });
+
+    it('writes to cwd (not project root) when run from subdirectory', async () => {
+      const subDir = path.join(tempDir, 'sub', 'deep');
+      await fs.ensureDir(subDir);
+      await fs.writeFile(path.join(tempDir, 'in.yml'), 'name: imported-cwd\nversion: "1.0.0"\ndatabases: []');
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: root');
+      process.chdir(subDir);
+
+      await runShareImport(path.join(tempDir, 'in.yml'), { output: 'local-config.yml' });
+
+      const inCwd = path.join(subDir, 'local-config.yml');
+      const inRoot = path.join(tempDir, 'local-config.yml');
+      expect(await fs.pathExists(inCwd)).toBe(true);
+      expect(await fs.pathExists(inRoot)).toBe(false);
+      const content = await fs.readFile(inCwd, 'utf-8');
+      expect(content).toMatch(/imported-cwd/);
     });
   });
 });

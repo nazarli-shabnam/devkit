@@ -66,7 +66,7 @@ export async function loadConfig(projectRoot: string = process.cwd()): Promise<D
       );
     }
     
-    if (error.message.includes('YAMLException')) {
+    if (error.name === 'YAMLException' || (error.message && String(error.message).includes('YAML'))) {
       throw new Error(
         `Failed to parse YAML configuration: ${error.message}\n` +
         `Please check the syntax of your .dev-env.yml file.`
@@ -99,17 +99,31 @@ export async function loadConfigOrPromptInit(projectRoot: string = process.cwd()
 
   const answer = await prompts(
     {
-      type: 'confirm',
+      type: 'text',
       name: 'value',
-      message: 'No .dev-env.yml found. Run `envkit init` now?',
-      initial: true,
+      message: 'No .dev-env.yml found. Run `envkit init` now? (Y/n)',
+      initial: 'y',
+      format: (v) => {
+        const s = (v ?? '').trim().toLowerCase();
+        if (s === '' || s === 'y' || s === 'yes' || s === '.') return true;
+        if (s === 'n' || s === 'no') return false;
+        return undefined; // let validate handle
+      },
+      validate: (v) => {
+        const s = (v ?? '').trim().toLowerCase();
+        if (s === '' || s === 'y' || s === 'yes' || s === '.' || s === 'n' || s === 'no') return true;
+        return 'Please answer y (yes) or n (no)';
+      },
     },
     {
-      onCancel: () => true,
+      onCancel: () => {
+        process.exit(0);
+      },
     }
   );
 
-  if (!answer?.value) {
+  const runInitNow = answer?.value === true;
+  if (!runInitNow) {
     throw new Error(baseMsg);
   }
 

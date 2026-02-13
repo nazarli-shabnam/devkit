@@ -101,4 +101,52 @@ describe('setup command', () => {
     await runSetup({ skipDb: true });
     expect(execFn).not.toHaveBeenCalled();
   });
+
+  it('runs dependency command when config has dependencies and skipDeps is false', async () => {
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      [
+        'name: setup-test',
+        'dependencies:',
+        '  - type: npm',
+        '    command: npm install',
+        '    path: .',
+        'databases: []',
+      ].join('\n')
+    );
+    process.chdir(tempDir);
+
+    await runSetup({ skipDeps: false });
+
+    expect(execFn).toHaveBeenCalled();
+    expect(execFn).toHaveBeenCalledWith('npm', ['install'], expect.any(Object));
+  });
+
+  it('runs migration command when config has migrations and skipDb is false', async () => {
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      [
+        'name: setup-test',
+        'dependencies: []',
+        'databases:',
+        '  - type: postgresql',
+        '    port: 5432',
+        '    migrations:',
+        '      - path: .',
+        '        command: npm run migrate',
+        '    seed:',
+        '      command: npm run seed',
+      ].join('\n')
+    );
+    process.chdir(tempDir);
+
+    await runSetup({ skipDeps: true, skipDb: false });
+
+    expect(execFn).toHaveBeenCalled();
+    const calls = (execFn as jest.Mock).mock.calls;
+    const migrateCall = calls.find((c: unknown[]) => String(c[0]).includes('npm') && String(c[1]?.[0]).includes('migrate'));
+    expect(migrateCall).toBeDefined();
+    const seedCall = calls.find((c: unknown[]) => String(c[1]?.[0]).includes('seed'));
+    expect(seedCall).toBeDefined();
+  });
 });

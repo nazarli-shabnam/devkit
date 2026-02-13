@@ -95,16 +95,40 @@ describe('config loader', () => {
       expect(config.dependencies![0].type).toBe('npm');
     });
 
-    it('throws on invalid YAML', async () => {
+    it('throws on invalid YAML and message mentions config file and syntax', async () => {
       await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'invalid: yaml: [[[');
 
-      await expect(loadConfig(tempDir)).rejects.toThrow();
+      const loadPromise = loadConfig(tempDir);
+      await expect(loadPromise).rejects.toThrow(/\.dev-env\.yml/);
+      await expect(loadPromise).rejects.toThrow(/syntax|YAML|parse/i);
     });
 
     it('throws on invalid schema (missing name)', async () => {
       await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'version: "1.0.0"\ndependencies: []');
 
       await expect(loadConfig(tempDir)).rejects.toThrow(/Invalid configuration/);
+    });
+
+    it('resolves ${VAR} in config from .env when loadEnvFile is called first', async () => {
+      await fs.writeFile(path.join(tempDir, '.env'), 'APP_NAME=resolved-app\n');
+      await fs.writeFile(
+        path.join(tempDir, '.dev-env.yml'),
+        'name: ${APP_NAME}\nversion: "1.0.0"\ndatabases: []'
+      );
+      const config = await loadConfig(tempDir);
+      expect(config.name).toBe('resolved-app');
+      delete process.env.APP_NAME;
+    });
+
+    it('resolves ${VAR} in nested strings (env, connection_string)', async () => {
+      await fs.writeFile(path.join(tempDir, '.env'), 'SECRET=xyz\n');
+      await fs.writeFile(
+        path.join(tempDir, '.dev-env.yml'),
+        'name: n\nversion: "1.0.0"\nenv:\n  KEY: ${SECRET}\ndatabases: []'
+      );
+      const config = await loadConfig(tempDir);
+      expect(config.env?.KEY).toBe('xyz');
+      delete process.env.SECRET;
     });
   });
 
@@ -193,6 +217,30 @@ describe('config loader', () => {
       await fs.writeFile(path.join(tempDir, 'package.json'), '{}');
       const subDir = path.join(tempDir, 'sub');
       await fs.ensureDir(subDir);
+      const found = await findProjectRoot(subDir);
+      expect(found).toBe(tempDir);
+    });
+
+    it('returns directory containing requirements.txt when no .dev-env.yml or package.json', async () => {
+      const subDir = path.join(tempDir, 'a', 'b');
+      await fs.ensureDir(subDir);
+      await fs.writeFile(path.join(tempDir, 'requirements.txt'), '');
+      const found = await findProjectRoot(subDir);
+      expect(found).toBe(tempDir);
+    });
+
+    it('returns directory containing Cargo.toml when no .dev-env.yml or package.json', async () => {
+      const subDir = path.join(tempDir, 'crate', 'src');
+      await fs.ensureDir(subDir);
+      await fs.writeFile(path.join(tempDir, 'Cargo.toml'), '[package]\n');
+      const found = await findProjectRoot(subDir);
+      expect(found).toBe(tempDir);
+    });
+
+    it('returns directory containing go.mod when no .dev-env.yml or package.json', async () => {
+      const subDir = path.join(tempDir, 'cmd', 'app');
+      await fs.ensureDir(subDir);
+      await fs.writeFile(path.join(tempDir, 'go.mod'), 'module example.com\n');
       const found = await findProjectRoot(subDir);
       expect(found).toBe(tempDir);
     });

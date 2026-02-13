@@ -95,4 +95,60 @@ describe('generate command', () => {
     const content = await fs.readFile(outPath, 'utf-8');
     expect(content).toContain('redis');
   });
+
+  it('generated compose contains healthcheck for database services', async () => {
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      [
+        'name: gen-test',
+        'databases:',
+        '  - type: postgresql',
+        '    port: 5432',
+        '  - type: redis',
+        '    port: 6379',
+        'docker:',
+        '  enabled: true',
+      ].join('\n')
+    );
+    process.chdir(tempDir);
+
+    await runGenerate({ output: 'docker-compose.yml' });
+
+    const content = await fs.readFile(path.join(tempDir, 'docker-compose.yml'), 'utf-8');
+    expect(content).toContain('healthcheck:');
+    expect(content).toMatch(/pg_isready|postgres/);
+    expect(content).toMatch(/redis-cli|ping/);
+    expect(content).toContain('interval: 10s');
+  });
+
+  it('writes to cwd (not project root) when run from subdirectory', async () => {
+    const subDir = path.join(tempDir, 'sub', 'deep');
+    await fs.ensureDir(subDir);
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      'name: gen-test\ndatabases:\n  - type: redis\n    port: 6379\ndocker:\n  enabled: true'
+    );
+    process.chdir(subDir);
+
+    await runGenerate({ output: 'compose-in-cwd.yml' });
+
+    const inCwd = path.join(subDir, 'compose-in-cwd.yml');
+    const inRoot = path.join(tempDir, 'compose-in-cwd.yml');
+    expect(await fs.pathExists(inCwd)).toBe(true);
+    expect(await fs.pathExists(inRoot)).toBe(false);
+    const content = await fs.readFile(inCwd, 'utf-8');
+    expect(content).toContain('redis');
+  });
+
+  it('uses default output filename when output is empty string', async () => {
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      'name: gen-test\ndatabases:\n  - type: redis\n    port: 6379\ndocker:\n  enabled: true'
+    );
+    process.chdir(tempDir);
+
+    await runGenerate({ output: '' });
+
+    expect(await fs.pathExists(path.join(tempDir, 'docker-compose.yml'))).toBe(true);
+  });
 });

@@ -36,6 +36,22 @@ describe('compose-generator', () => {
       expect(content).toContain('mydb');
     });
 
+    it('includes healthcheck for database services', () => {
+      const config = {
+        name: 'app',
+        databases: [
+          { type: 'postgresql' as const, port: 5432, host: 'localhost' },
+          { type: 'redis' as const, port: 6379, host: 'localhost' },
+        ],
+        docker: { network_name: 'dev-network' },
+      } as DevEnvConfig;
+      const content = generateComposeContent(config, templatesDir);
+      expect(content).toContain('healthcheck:');
+      expect(content).toMatch(/pg_isready|postgres/);
+      expect(content).toMatch(/redis-cli|ping/);
+      expect(content).toContain('interval: 10s');
+    });
+
     it('skips sqlite (no container service)', () => {
       const config = {
         name: 'app',
@@ -74,6 +90,21 @@ describe('compose-generator', () => {
       const config = { name: 'app' } as DevEnvConfig;
       const content = generateComposeContent(config, templatesDir);
       expect(content).toContain('dev-network');
+    });
+
+    it('includes healthcheck for mariadb and mongodb when in config', () => {
+      const config = {
+        name: 'app',
+        databases: [
+          { type: 'mariadb' as const, port: 3306, host: 'localhost' },
+          { type: 'mongodb' as const, port: 27017, host: 'localhost' },
+        ],
+        docker: { network_name: 'dev-network' },
+      } as DevEnvConfig;
+      const content = generateComposeContent(config, templatesDir);
+      expect(content).toContain('healthcheck:');
+      expect(content).toMatch(/mysqladmin|mongosh/);
+      expect(content).toContain('interval: 10s');
     });
 
     it('throws when templates dir has no docker-compose.hbs', () => {

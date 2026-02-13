@@ -52,6 +52,24 @@ describe('init command', () => {
       const name = await getDefaultProjectName(tempDir);
       expect(name).toBe(path.basename(tempDir));
     });
+
+    it('returns directory basename when package.json name is empty string', async () => {
+      await fs.writeFile(
+        path.join(tempDir, 'package.json'),
+        JSON.stringify({ name: '' })
+      );
+      const name = await getDefaultProjectName(tempDir);
+      expect(name).toBe(path.basename(tempDir));
+    });
+
+    it('trims whitespace from package.json name', async () => {
+      await fs.writeFile(
+        path.join(tempDir, 'package.json'),
+        JSON.stringify({ name: '  my-app  ' })
+      );
+      const name = await getDefaultProjectName(tempDir);
+      expect(name).toBe('my-app');
+    });
   });
 
   describe('isInteractive', () => {

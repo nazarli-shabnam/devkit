@@ -1,7 +1,7 @@
 import Handlebars from 'handlebars';
 import * as path from 'path';
 import * as fs from 'fs';
-import type { DevEnvConfig, Database, Service } from '../../types/config';
+import type { DevEnvConfig, Database, Service, HealthCheck } from '../../types/config';
 
 export interface ComposeService {
   name: string;
@@ -9,6 +9,8 @@ export interface ComposeService {
   version?: string;
   ports: string[];
   env: Record<string, string>;
+  /** Pre-rendered YAML fragment for healthcheck (indented), or undefined to omit */
+  healthcheck?: string;
 }
 
 const DB_IMAGES: Record<string, string> = {
@@ -20,7 +22,50 @@ const DB_IMAGES: Record<string, string> = {
   sqlite: '',
 };
 
-function databaseToComposeService(db: Database, index: number): ComposeService | null {
+/** Build a healthcheck YAML fragment (indented) from config health_checks or DB type defaults */
+function buildHealthcheckForService(
+  serviceName: string,
+  serviceType: string,
+  port: number,
+  healthChecks: HealthCheck[] | undefined
+): string | undefined {
+  const matched = healthChecks?.find(
+    (h) => h.name === serviceName || h.type === serviceType
+  );
+  if (matched?.connection_string || matched?.url) {
+    const test =
+      matched.type === 'redis'
+        ? ['CMD', 'redis-cli', 'ping']
+        : matched.type === 'postgresql'
+          ? ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
+          : matched.type === 'mysql' || matched.type === 'mariadb'
+            ? ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+            : matched.type === 'mongodb'
+              ? ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+              : null;
+    if (test) {
+      const lines = [`      test: ${JSON.stringify(test)}`, '      interval: 10s', '      timeout: 5s', '      retries: 5'];
+      return lines.join('\n');
+    }
+  }
+  const defaults: Record<string, string[]> = {
+    postgresql: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}'],
+    mysql: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost'],
+    mariadb: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost'],
+    mongodb: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"],
+    redis: ['CMD', 'redis-cli', 'ping'],
+  };
+  const test = defaults[serviceType];
+  if (!test) return undefined;
+  const lines = [`      test: ${JSON.stringify(test)}`, '      interval: 10s', '      timeout: 5s', '      retries: 5'];
+  return lines.join('\n');
+}
+
+function databaseToComposeService(
+  db: Database,
+  index: number,
+  healthChecks: HealthCheck[] | undefined
+): ComposeService | null {
   const image = DB_IMAGES[db.type];
   if (!image) return null;
 
@@ -44,12 +89,15 @@ function databaseToComposeService(db: Database, index: number): ComposeService |
     if (db.database) env.MONGO_INITDB_DATABASE = db.database;
   }
 
+  const healthcheck = buildHealthcheckForService(name, db.type, port, healthChecks);
+
   return {
     name,
     image,
     version: db.version,
     ports,
     env,
+    healthcheck,
   };
 }
 
@@ -82,8 +130,10 @@ function loadComposeTemplate(templatesDir: string): string {
 export function generateComposeContent(config: DevEnvConfig, templatesDir: string): string {
   const services: ComposeService[] = [];
 
+  const healthChecks = config.health_checks;
+
   config.databases?.forEach((db, i) => {
-    const s = databaseToComposeService(db, i);
+    const s = databaseToComposeService(db, i, healthChecks);
     if (s) services.push(s);
   });
 

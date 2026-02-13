@@ -113,13 +113,13 @@ envkit share export
 
 By default this writes `dev-env.shared.yml`. Use `-o <file>` to change the path.
 
-Import a shared config file (it is validated and then written to `.dev-env.yml` by default):
+Import a shared config file (it is validated and then written to `.dev-env.yml` by default). The `<file>` path is resolved relative to your **current working directory**:
 
 ```bash
 envkit share import path/to/dev-env.shared.yml
 ```
 
-Use `-o <file>` to write to a different path.
+Use `-o <file>` to write to a different path (also relative to the current directory unless you pass an absolute path).
 
 ### Global options
 

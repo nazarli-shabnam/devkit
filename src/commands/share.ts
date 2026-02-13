@@ -44,10 +44,12 @@ export async function runShareExport(options: ShareExportOptions = {}): Promise<
   const config = await loadConfigOrPromptInit(projectRoot);
 
   const sanitized = sanitizeConfigForShare(config);
+  // Ensure sanitized output still validates (e.g. schema hasn't drifted)
+  DevEnvConfigSchema.parse(sanitized);
   const yamlContent = yaml.dump(sanitized, { lineWidth: -1 });
 
-  const outputFile = options.output ?? 'dev-env.shared.yml';
-  const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(projectRoot, outputFile);
+  const outputFile = (options.output?.trim() || 'dev-env.shared.yml');
+  const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);
 
   await writeFile(outPath, yamlContent);
   logger.success(`Exported sanitized config to ${outputFile}`);
@@ -80,8 +82,8 @@ export async function runShareImport(filePath: string, options: ShareImportOptio
   }
 
   const projectRoot = await findProjectRoot(process.cwd());
-  const outputFile = options.output ?? '.dev-env.yml';
-  const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(projectRoot, outputFile);
+  const outputFile = (options.output?.trim() || '.dev-env.yml');
+  const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);
 
   const yamlContent = yaml.dump(parsed.data, { lineWidth: -1 });
   await writeFile(outPath, yamlContent);

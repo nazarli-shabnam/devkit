@@ -53,6 +53,24 @@ describe('validator', () => {
       expect(warnSpy).not.toHaveBeenCalled();
     });
 
+    it('does not warn when password is env placeholder ${VAR}', () => {
+      const config = {
+        name: 'app',
+        databases: [
+          {
+            type: 'postgresql' as const,
+            port: 5432,
+            host: 'localhost',
+            user: '${DB_USER}',
+            password: '${DB_PASSWORD}',
+            database: 'db',
+          },
+        ],
+      };
+      checkConfigWarnings(config as DevEnvConfig);
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
     it('warns when plain password in config', () => {
       const config = {
         name: 'app',

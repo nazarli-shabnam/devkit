@@ -272,4 +272,139 @@ describe('CLI integration', () => {
       fs.removeSync(tempDir);
     }
   });
+
+  it('path-setup --help shows path-setup description', () => {
+    const out = runCli(['path-setup', '--help']);
+    expect(out).toMatch(/path|PATH|envkit/i);
+  });
+
+  it('share export then import roundtrip preserves config structure', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-roundtrip-${Date.now()}`);
+    fs.ensureDirSync(tempDir);
+    const config = [
+      'name: roundtrip-app',
+      'version: "2.0.0"',
+      'databases:',
+      '  - type: postgresql',
+      '    port: 5432',
+      '    user: ${DB_USER}',
+      '    password: ${DB_PASSWORD}',
+      '    database: mydb',
+      'services:',
+      '  - type: rabbitmq',
+      '    port: 5672',
+    ].join('\n');
+    fs.writeFileSync(path.join(tempDir, '.dev-env.yml'), config);
+    try {
+      runCli(['share', 'export', '-o', 'roundtrip-shared.yml'], tempDir);
+      expect(fs.pathExistsSync(path.join(tempDir, 'roundtrip-shared.yml'))).toBe(true);
+      fs.writeFileSync(path.join(tempDir, '.dev-env.yml'), 'name: overwritten');
+      runCli(['share', 'import', 'roundtrip-shared.yml', '-o', '.dev-env.yml'], tempDir);
+      const imported = fs.readFileSync(path.join(tempDir, '.dev-env.yml'), 'utf-8');
+      expect(imported).toMatch(/name:\s*roundtrip-app|roundtrip-app/);
+      expect(imported).toMatch(/postgresql|5432/);
+      expect(imported).toMatch(/rabbitmq|5672/);
+      expect(imported).toContain('${DB_USER}');
+      expect(imported).toContain('${DB_PASSWORD}');
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
+  it('share export writes to current working directory when run from subdir', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-export-cwd-${Date.now()}`);
+    const subDir = path.join(tempDir, 'sub', 'deep');
+    fs.ensureDirSync(subDir);
+    fs.writeFileSync(
+      path.join(tempDir, '.dev-env.yml'),
+      'name: cwd-test\nversion: "1.0.0"\ndatabases: []'
+    );
+    try {
+      runCli(['share', 'export', '-o', 'exported-from-sub.yml'], subDir);
+      const inCwd = path.join(subDir, 'exported-from-sub.yml');
+      const inRoot = path.join(tempDir, 'exported-from-sub.yml');
+      expect(fs.pathExistsSync(inCwd)).toBe(true);
+      expect(fs.pathExistsSync(inRoot)).toBe(false);
+      const content = fs.readFileSync(inCwd, 'utf-8');
+      expect(content).toMatch(/name:\s*cwd-test|cwd-test/);
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
+  it('generate writes docker-compose to current working directory when run from subdir', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-generate-cwd-${Date.now()}`);
+    const subDir = path.join(tempDir, 'sub', 'deep');
+    fs.ensureDirSync(subDir);
+    fs.writeFileSync(
+      path.join(tempDir, '.dev-env.yml'),
+      'name: gen-cwd\ndatabases:\n  - type: redis\n    port: 6379\ndocker:\n  enabled: true'
+    );
+    try {
+      runCli(['generate', '-o', 'compose-in-sub.yml'], subDir);
+      const inCwd = path.join(subDir, 'compose-in-sub.yml');
+      const inRoot = path.join(tempDir, 'compose-in-sub.yml');
+      expect(fs.pathExistsSync(inCwd)).toBe(true);
+      expect(fs.pathExistsSync(inRoot)).toBe(false);
+      const content = fs.readFileSync(inCwd, 'utf-8');
+      expect(content).toMatch(/version:|services:/);
+      expect(content).toContain('redis');
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
+  it('generate produces compose with healthcheck for database services', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-healthcheck-${Date.now()}`);
+    fs.ensureDirSync(tempDir);
+    fs.writeFileSync(
+      path.join(tempDir, '.dev-env.yml'),
+      [
+        'name: healthcheck-e2e',
+        'databases:',
+        '  - type: postgresql',
+        '    port: 5432',
+        '  - type: redis',
+        '    port: 6379',
+        'docker:',
+        '  enabled: true',
+      ].join('\n')
+    );
+    try {
+      runCli(['generate'], tempDir);
+      const content = fs.readFileSync(path.join(tempDir, 'docker-compose.yml'), 'utf-8');
+      expect(content).toContain('healthcheck:');
+      expect(content).toMatch(/pg_isready|redis-cli|ping/);
+      expect(content).toContain('interval: 10s');
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
+
+  it('share import -o writes to current working directory when run from subdir', () => {
+    const os = require('os');
+    const tempDir = path.join(os.tmpdir(), `devkit-e2e-import-cwd-${Date.now()}`);
+    const subDir = path.join(tempDir, 'sub', 'deep');
+    fs.ensureDirSync(subDir);
+    fs.writeFileSync(
+      path.join(tempDir, 'shared.yml'),
+      'name: imported-in-cwd\nversion: "1.0.0"\ndatabases: []'
+    );
+    fs.writeFileSync(path.join(tempDir, '.dev-env.yml'), 'name: root');
+    try {
+      runCli(['share', 'import', path.join(tempDir, 'shared.yml'), '-o', 'local-import.yml'], subDir);
+      const inCwd = path.join(subDir, 'local-import.yml');
+      const inRoot = path.join(tempDir, 'local-import.yml');
+      expect(fs.pathExistsSync(inCwd)).toBe(true);
+      expect(fs.pathExistsSync(inRoot)).toBe(false);
+      const content = fs.readFileSync(inCwd, 'utf-8');
+      expect(content).toMatch(/imported-in-cwd/);
+    } finally {
+      fs.removeSync(tempDir);
+    }
+  });
 });

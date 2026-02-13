@@ -14,7 +14,7 @@ function getTemplatesDir(): string {
 }
 
 export async function runGenerate(options: GenerateOptions = {}): Promise<void> {
-  const outputFile = options.output ?? 'docker-compose.yml';
+  const outputFile = (options.output?.trim() || 'docker-compose.yml');
 
   const projectRoot = await findProjectRoot(process.cwd());
   logger.debug(`Project root: ${projectRoot}`);
@@ -29,7 +29,7 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
 
   const templatesDir = getTemplatesDir();
   const content = generateComposeContent(config, templatesDir);
-  const outPath = path.resolve(projectRoot, outputFile);
+  const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);
 
   await writeFile(outPath, content);
   logger.success(`Wrote ${outputFile}`);
