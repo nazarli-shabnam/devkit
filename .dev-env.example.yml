@@ -26,6 +26,7 @@ databases:
         command: npm run migrate
     seed:
       command: npm run seed
+      path: .  # optional: directory to run the seed command in (default ".")
 
   # - type: redis
   #   version: "7"
@@ -53,6 +54,13 @@ health_checks:
   # - name: redis
   #   type: redis
   #   url: redis://localhost:6379
+  # Generic (non-database) services can define a raw healthcheck command with `test`:
+  # - name: rabbitmq_1        # matches the generated service name, or use type
+  #   type: rabbitmq
+  #   test: rabbitmq-diagnostics -q ping
+  #   interval: 30s
+  #   timeout: 10s
+  #   retries: 5
 
 # Snapshot configuration
 snapshot:
