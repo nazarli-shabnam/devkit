@@ -247,5 +247,26 @@ describe('share command', () => {
       const content = await fs.readFile(inCwd, 'utf-8');
       expect(content).toMatch(/imported-cwd/);
     });
+
+    it('validate-only does not write any file', async () => {
+      const sharedPath = path.join(tempDir, 'shared.yml');
+      await fs.writeFile(sharedPath, 'name: imported\nversion: "1.0.0"\ndatabases: []');
+      process.chdir(tempDir);
+
+      await runShareImport(sharedPath, { validateOnly: true });
+
+      expect(await fs.pathExists(path.join(tempDir, '.dev-env.yml'))).toBe(false);
+      expect(logger.success).toHaveBeenCalledWith(expect.stringContaining('valid'));
+    });
+
+    it('validate-only still rejects an invalid config', async () => {
+      const badPath = path.join(tempDir, 'bad.yml');
+      await fs.writeFile(badPath, 'version: "1.0.0"');
+      process.chdir(tempDir);
+
+      await expect(runShareImport(badPath, { validateOnly: true })).rejects.toThrow(
+        /Invalid dev-env config|name/
+      );
+    });
   });
 });

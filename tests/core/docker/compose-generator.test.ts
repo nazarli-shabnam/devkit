@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { generateComposeContent } from '../../../src/core/docker/compose-generator';
 import type { DevEnvConfig } from '../../../src/types/config';
+import { logger } from '../../../src/utils/logger';
 
 const templatesDir = path.resolve(__dirname, '../../../templates');
 
@@ -61,6 +62,37 @@ describe('compose-generator', () => {
       const content = generateComposeContent(config, templatesDir);
       expect(content).not.toMatch(/sqlite|sqlite_1/);
       expect(content).toContain('services:');
+    });
+
+    it('warns when a database has no Docker image (sqlite)', () => {
+      const warnSpy = jest.spyOn(logger, 'warn').mockImplementation();
+      try {
+        const config = {
+          name: 'app',
+          databases: [{ type: 'sqlite' as const, name: 'localdb', host: 'localhost' }],
+          docker: {},
+        } as DevEnvConfig;
+        generateComposeContent(config, templatesDir);
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('localdb'));
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
+    it('adds a healthcheck to a generic service when a matching health_check provides a test', () => {
+      const config = {
+        name: 'app',
+        services: [{ type: 'rabbitmq', port: 5672, host: 'localhost' }],
+        health_checks: [
+          { name: 'rabbitmq_1', type: 'rabbitmq', test: 'rabbitmq-diagnostics ping', interval: '30s', retries: 3 },
+        ],
+        docker: {},
+      } as DevEnvConfig;
+      const content = generateComposeContent(config, templatesDir);
+      expect(content).toContain('healthcheck:');
+      expect(content).toContain('rabbitmq-diagnostics ping');
+      expect(content).toContain('interval: 30s');
+      expect(content).toContain('retries: 3');
     });
 
     it('includes custom service with port and management_port', () => {

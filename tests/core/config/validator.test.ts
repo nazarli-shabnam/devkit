@@ -91,6 +91,27 @@ describe('validator', () => {
       );
     });
 
+    it('does not warn for benign keys containing the word "password" (e.g. env URLs)', () => {
+      const config = {
+        name: 'app',
+        databases: [{ type: 'redis' as const, port: 6379, host: 'localhost' }],
+        env: { PASSWORD_RESET_URL: 'https://example.com/reset' },
+      };
+      checkConfigWarnings(config as unknown as DevEnvConfig);
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Passwords detected'));
+    });
+
+    it('returns the list of warnings it emits', () => {
+      const config = {
+        name: 'app',
+        databases: [
+          { type: 'postgresql' as const, port: 5432, host: 'localhost', user: 'u', password: 'plain', database: 'db' },
+        ],
+      };
+      const warnings = checkConfigWarnings(config as DevEnvConfig);
+      expect(warnings.some((w) => w.includes('Passwords detected'))).toBe(true);
+    });
+
     it('warns when postgresql missing user or password', () => {
       const config = {
         name: 'app',

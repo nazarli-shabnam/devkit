@@ -140,6 +140,22 @@ describe('generate command', () => {
     expect(content).toContain('redis');
   });
 
+  it('dry-run prints compose to stdout without writing a file', async () => {
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      'name: gen-test\ndatabases:\n  - type: redis\n    port: 6379\ndocker:\n  enabled: true'
+    );
+    process.chdir(tempDir);
+    const writeSpy = jest.spyOn(process.stdout, 'write').mockReturnValue(true);
+
+    await runGenerate({ dryRun: true });
+
+    const written = writeSpy.mock.calls.map((c) => String(c[0])).join('');
+    expect(written).toContain('redis');
+    expect(written).toContain('services:');
+    expect(await fs.pathExists(path.join(tempDir, 'docker-compose.yml'))).toBe(false);
+  });
+
   it('uses default output filename when output is empty string', async () => {
     await fs.writeFile(
       path.join(tempDir, '.dev-env.yml'),

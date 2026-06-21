@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import { runSnapshotCreate, runSnapshotList, runSnapshotRestore } from '../../src/commands/snapshot';
+import { runSnapshotCreate, runSnapshotList, runSnapshotRestore, runSnapshotDelete } from '../../src/commands/snapshot';
 import { listSnapshots } from '../../src/core/snapshot/storage';
 import { logger } from '../../src/utils/logger';
 
@@ -201,6 +201,53 @@ describe('snapshot commands', () => {
 
       const current = await fs.readFile(path.join(tempDir, '.dev-env.yml'), 'utf-8');
       expect(current).toBe(configYaml);
+    });
+
+    it('backs up the current config to a pre-restore snapshot before overwriting', async () => {
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: original');
+      process.chdir(tempDir);
+      await runSnapshotCreate('backup');
+      await fs.writeFile(
+        path.join(tempDir, '.devkit', 'snapshots', 'backup', 'dev-env.yml'),
+        'name: from-backup'
+      );
+
+      await runSnapshotRestore('backup', { yes: true });
+
+      const snapshots = await listSnapshots(tempDir);
+      const preRestore = snapshots.find((s) => s.name.startsWith('pre-restore-'));
+      expect(preRestore).toBeDefined();
+      const backupYaml = await fs.readFile(
+        path.join(tempDir, '.devkit', 'snapshots', preRestore!.name, 'dev-env.yml'),
+        'utf-8'
+      );
+      expect(backupYaml).toBe('name: original');
+    });
+  });
+
+  describe('runSnapshotDelete', () => {
+    it('throws when name is empty', async () => {
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: x');
+      process.chdir(tempDir);
+      await expect(runSnapshotDelete('')).rejects.toThrow(/Snapshot name is required/);
+    });
+
+    it('throws when snapshot does not exist', async () => {
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: x');
+      process.chdir(tempDir);
+      await expect(runSnapshotDelete('nope')).rejects.toThrow(/not found|envkit snapshot list/);
+    });
+
+    it('removes an existing snapshot', async () => {
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: x');
+      process.chdir(tempDir);
+      await runSnapshotCreate('doomed');
+      expect(await listSnapshots(tempDir)).toHaveLength(1);
+
+      await runSnapshotDelete('doomed');
+
+      expect(await listSnapshots(tempDir)).toHaveLength(0);
+      expect(logger.success).toHaveBeenCalledWith(expect.stringContaining('doomed'));
     });
   });
 });
