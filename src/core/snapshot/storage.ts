@@ -65,6 +65,20 @@ export async function listSnapshots(projectRoot: string): Promise<SnapshotMeta[]
 }
 
 
+export async function deleteSnapshot(projectRoot: string, name: string): Promise<void> {
+  const safeName = sanitizeSnapshotName(name) || 'snapshot';
+  const snapshotDir = getSnapshotDir(projectRoot);
+  const snapshotPath = path.join(snapshotDir, safeName);
+
+  if (!(await fileExists(snapshotPath))) {
+    throw new Error(
+      `Snapshot "${safeName}" not found. List snapshots with: envkit snapshot list`
+    );
+  }
+
+  await fs.remove(snapshotPath);
+}
+
 export async function getSnapshotConfig(projectRoot: string, name: string): Promise<string> {
   const safeName = sanitizeSnapshotName(name) || 'snapshot';
   const snapshotDir = getSnapshotDir(projectRoot);

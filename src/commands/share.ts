@@ -86,6 +86,7 @@ export async function runShareExport(options: ShareExportOptions = {}): Promise<
 
 export interface ShareImportOptions {
   output?: string;
+  validateOnly?: boolean;
 }
 
 export async function runShareImport(filePath: string, options: ShareImportOptions = {}): Promise<void> {
@@ -108,6 +109,11 @@ export async function runShareImport(filePath: string, options: ShareImportOptio
       .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
       .join('\n');
     throw new Error(`Invalid dev-env config in ${filePath}:\n${issues}`);
+  }
+
+  if (options.validateOnly) {
+    logger.success(`${filePath} is a valid dev-env config.`);
+    return;
   }
 
   const outputFile = (options.output?.trim() || '.dev-env.yml');
