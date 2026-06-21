@@ -24,6 +24,7 @@ export const DatabaseSchema = z.object({
   })).optional(),
   seed: z.object({
     command: z.string(),
+    path: z.string().optional().default('.'),
   }).optional(),
 });
 

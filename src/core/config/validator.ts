@@ -23,10 +23,15 @@ export function validateConfig(config: any): DevEnvConfig {
 /**
  * Check for common configuration issues and warn
  */
+function isLiteralSecret(value: string | undefined): boolean {
+  // A real secret is a non-empty string that is not an unresolved ${VAR} placeholder.
+  return !!value && !value.includes('${');
+}
+
 export function checkConfigWarnings(config: DevEnvConfig): void {
-  // Check for passwords in config (should be in .env)
-  const configStr = JSON.stringify(config);
-  if (configStr.includes('password') && !configStr.includes('${')) {
+  // Check for hardcoded passwords in known secret locations (should be in .env).
+  // Only inspect real secret fields so keys like `password_reset_url` don't false-positive.
+  if (config.databases?.some((db) => isLiteralSecret(db.password))) {
     logger.warn(
       'Warning: Passwords detected in configuration file.\n' +
       'Consider using environment variables (${VAR_NAME}) and .env file for secrets.'

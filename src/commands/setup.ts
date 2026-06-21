@@ -109,15 +109,17 @@ export async function runSetup(options: SetupOptions = {}): Promise<void> {
         }
       }
       if (db.seed && !dryRun) {
+        const seedPath = db.seed.path ?? '.';
+        const cwd = path.resolve(projectRoot, seedPath);
         const { cmd, args } = parseCommand(db.seed.command);
-        logger.step(`Running seed (${db.type})...`);
+        logger.step(`Running seed (${db.type}) in ${seedPath}...`);
         await exec(cmd, args, {
-          cwd: projectRoot,
+          cwd,
           env: { ...process.env, ...env } as Record<string, string>,
           silent: false,
         });
       } else if (db.seed && dryRun) {
-        logger.info(`[dry-run] Would run seed: ${db.seed.command}`);
+        logger.info(`[dry-run] Would run seed in ${db.seed.path ?? '.'}: ${db.seed.command}`);
       }
     }
   } else if (skipDb) {
