@@ -17,8 +17,9 @@ try {
 
 import { runSetup } from '../commands/setup';
 import { runGenerate } from '../commands/generate';
+import { runValidate } from '../commands/validate';
 import { runInit, isInteractive } from '../commands/init';
-import { runSnapshotCreate, runSnapshotList, runSnapshotRestore } from '../commands/snapshot';
+import { runSnapshotCreate, runSnapshotList, runSnapshotRestore, runSnapshotDelete } from '../commands/snapshot';
 import { runShareExport, runShareImport } from '../commands/share';
 import { runPathSetup } from '../commands/path-setup';
 import { findProjectRoot } from '../core/config/loader';
@@ -80,6 +81,19 @@ program
     }
   });
 
+program
+  .command('validate')
+  .description('Validate .dev-env.yml (and .env) without running setup or generate')
+  .option('--strict', 'Fail on warnings or unresolved ${VAR} references')
+  .action(async (options) => {
+    try {
+      await runValidate({ strict: options.strict });
+    } catch (err: unknown) {
+      logger.error((err as Error).message ?? 'Validation failed');
+      process.exit(1);
+    }
+  });
+
 const snapshotCommand = program
   .command('snapshot')
   .description('Manage environment snapshots');
@@ -111,13 +125,27 @@ snapshotCommand
 
 snapshotCommand
   .command('restore')
-  .description('Restore .dev-env.yml from a snapshot')
+  .description('Restore .dev-env.yml from a snapshot (backs up current config first)')
+  .argument('<name>', 'Snapshot name')
+  .option('-y, --yes', 'Skip the overwrite confirmation prompt')
+  .action(async (name, options) => {
+    try {
+      await runSnapshotRestore(name, { yes: options.yes });
+    } catch (err: unknown) {
+      logger.error((err as Error).message ?? 'Snapshot restore failed');
+      process.exit(1);
+    }
+  });
+
+snapshotCommand
+  .command('delete')
+  .description('Delete a snapshot')
   .argument('<name>', 'Snapshot name')
   .action(async (name) => {
     try {
-      await runSnapshotRestore(name);
+      await runSnapshotDelete(name);
     } catch (err: unknown) {
-      logger.error((err as Error).message ?? 'Snapshot restore failed');
+      logger.error((err as Error).message ?? 'Snapshot delete failed');
       process.exit(1);
     }
   });
@@ -126,9 +154,10 @@ program
   .command('generate')
   .description('Generate docker-compose.yml from configuration')
   .option('-o, --output <file>', 'Output file path', 'docker-compose.yml')
+  .option('--dry-run', 'Print the generated compose to stdout without writing a file')
   .action(async (options) => {
     try {
-      await runGenerate({ output: options.output });
+      await runGenerate({ output: options.output, dryRun: options.dryRun });
     } catch (err: any) {
       logger.error(err.message ?? 'Generate failed');
       process.exit(1);
@@ -157,9 +186,10 @@ shareCommand
   .description('Import shared configuration into project')
   .argument('<file>', 'Configuration file to import')
   .option('-o, --output <file>', 'Output file path', '.dev-env.yml')
+  .option('--validate-only', 'Validate the file without writing it')
   .action(async (file, options) => {
     try {
-      await runShareImport(file, { output: options.output });
+      await runShareImport(file, { output: options.output, validateOnly: options.validateOnly });
     } catch (err: unknown) {
       logger.error((err as Error).message ?? 'Share import failed');
       process.exit(1);

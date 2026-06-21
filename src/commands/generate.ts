@@ -7,6 +7,7 @@ import { writeFile } from '../utils/file-ops';
 
 export interface GenerateOptions {
   output?: string;
+  dryRun?: boolean;
 }
 
 function getTemplatesDir(): string {
@@ -36,6 +37,13 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
 
   const templatesDir = getTemplatesDir();
   const content = generateComposeContent(config, templatesDir);
+
+  if (options.dryRun) {
+    // Print to stdout without writing, so it can be inspected or piped.
+    process.stdout.write(content.endsWith('\n') ? content : content + '\n');
+    return;
+  }
+
   const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);
 
   await writeFile(outPath, content);

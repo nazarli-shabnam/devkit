@@ -19,7 +19,11 @@ export async function loadEnvFile(projectRoot: string): Promise<void> {
   }
 }
 
-export function resolveEnvVars(value: string, env: Record<string, string> = {}): string {
+export function resolveEnvVars(
+  value: string,
+  env: Record<string, string> = {},
+  unresolved?: Set<string>
+): string {
   const mergedEnv = { ...process.env, ...env };
   const MAX_DEPTH = 10;
 
@@ -29,7 +33,11 @@ export function resolveEnvVars(value: string, env: Record<string, string> = {}):
     result = result.replace(/\$\{([^}]+)\}/g, (match, varName) => {
       const resolved = mergedEnv[varName];
       if (resolved === undefined) {
-        logger.warn(`Environment variable ${varName} is not set`);
+        if (unresolved) {
+          unresolved.add(varName);
+        } else {
+          logger.warn(`Environment variable ${varName} is not set`);
+        }
         return match;
       }
       return resolved;
@@ -37,6 +45,34 @@ export function resolveEnvVars(value: string, env: Record<string, string> = {}):
     if (result === prev) break; // no more substitutions
   }
   return result;
+}
+
+/**
+ * Walk a raw (pre-validation) config object and return the names of all
+ * `${VAR}` references that cannot be resolved from process.env or the config's
+ * own `env` block. Used by `envkit validate --strict`.
+ */
+export function findUnresolvedVars(rawConfig: any): string[] {
+  const unresolved = new Set<string>();
+  const localEnv: Record<string, string> = {};
+  if (rawConfig && typeof rawConfig === 'object' && rawConfig.env && typeof rawConfig.env === 'object') {
+    for (const [k, v] of Object.entries(rawConfig.env)) {
+      if (typeof v === 'string') localEnv[k] = v;
+    }
+  }
+
+  const walk = (obj: any): void => {
+    if (typeof obj === 'string') {
+      resolveEnvVars(obj, localEnv, unresolved);
+    } else if (Array.isArray(obj)) {
+      obj.forEach(walk);
+    } else if (obj !== null && typeof obj === 'object') {
+      Object.values(obj).forEach(walk);
+    }
+  };
+  walk(rawConfig);
+
+  return [...unresolved];
 }
 
 export async function loadConfig(projectRoot: string = process.cwd()): Promise<DevEnvConfig> {

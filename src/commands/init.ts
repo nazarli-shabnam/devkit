@@ -184,10 +184,13 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     );
     if (addSeed.value) {
       const seedCmd = await prompts(
-        { type: 'text', name: 'command', message: 'Seed command', initial: 'npm run seed' },
+        [
+          { type: 'text', name: 'command', message: 'Seed command', initial: 'npm run seed' },
+          { type: 'text', name: 'path', message: 'Seed path', initial: '.' },
+        ],
         { onCancel: () => process.exit(0) }
       );
-      db.seed = { command: seedCmd.command || 'npm run seed' };
+      db.seed = { command: seedCmd.command || 'npm run seed', path: seedCmd.path?.trim() || '.' };
     }
     databases.push(db);
   }

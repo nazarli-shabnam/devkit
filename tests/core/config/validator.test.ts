@@ -1,4 +1,4 @@
-import { validateConfig, checkConfigWarnings } from '../../../src/core/config/validator';
+﻿import { validateConfig, checkConfigWarnings } from '../../../src/core/config/validator';
 import type { DevEnvConfig } from '../../../src/types/config';
 import { logger } from '../../../src/utils/logger';
 
@@ -87,8 +87,49 @@ describe('validator', () => {
       };
       checkConfigWarnings(config as DevEnvConfig);
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Passwords detected')
+        expect.stringContaining('secrets detected')
       );
+    });
+
+    it('does not warn for benign keys containing the word "password" (e.g. env URLs)', () => {
+      const config = {
+        name: 'app',
+        databases: [{ type: 'redis' as const, port: 6379, host: 'localhost' }],
+        env: { PASSWORD_RESET_URL: 'https://example.com/reset' },
+      };
+      checkConfigWarnings(config as unknown as DevEnvConfig);
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('secrets detected'));
+    });
+
+    it('returns the list of warnings it emits', () => {
+      const config = {
+        name: 'app',
+        databases: [
+          { type: 'postgresql' as const, port: 5432, host: 'localhost', user: 'u', password: 'plain', database: 'db' },
+        ],
+      };
+      const warnings = checkConfigWarnings(config as DevEnvConfig);
+      expect(warnings.some((w) => w.includes('secrets detected'))).toBe(true);
+    });
+
+    it('warns on a hardcoded secret in the env block (secret-like key)', () => {
+      const config = {
+        name: 'app',
+        databases: [{ type: 'redis' as const, port: 6379, host: 'localhost' }],
+        env: { API_KEY: 'sk-live-abc123' },
+      };
+      checkConfigWarnings(config as unknown as DevEnvConfig);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('secrets detected'));
+    });
+
+    it('does not warn on an env placeholder secret value', () => {
+      const config = {
+        name: 'app',
+        databases: [{ type: 'redis' as const, port: 6379, host: 'localhost' }],
+        env: { API_KEY: '${API_KEY}' },
+      };
+      checkConfigWarnings(config as unknown as DevEnvConfig);
+      expect(warnSpy).not.toHaveBeenCalled();
     });
 
     it('warns when postgresql missing user or password', () => {

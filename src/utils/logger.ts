@@ -23,6 +23,10 @@ class Logger {
     this.level = level;
   }
 
+  getLevel(): LogLevel {
+    return this.level;
+  }
+
   private formatMessage(level: string, message: string, ...args: any[]): string {
     const timestamp = new Date().toISOString();
     const formattedArgs = args.map(arg => 

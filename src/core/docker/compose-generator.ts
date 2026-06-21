@@ -2,6 +2,7 @@ import Handlebars from 'handlebars';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { DevEnvConfig, Database, Service, HealthCheck } from '../../types/config';
+import { logger } from '../../utils/logger';
 
 export interface ComposeService {
   name: string;
@@ -22,43 +23,62 @@ const DB_IMAGES: Record<string, string> = {
   sqlite: '',
 };
 
-/** Build a healthcheck YAML fragment (indented) from config health_checks or DB type defaults */
+const DB_HEALTHCHECK_TESTS: Record<string, string[]> = {
+  postgresql: ['CMD-SHELL', 'pg_isready'],
+  mysql: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost'],
+  mariadb: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost'],
+  mongodb: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"],
+  redis: ['CMD', 'redis-cli', 'ping'],
+};
+
+function renderHealthcheckFragment(test: string[], hc?: HealthCheck): string {
+  const interval = hc?.interval ?? '10s';
+  const timeout = hc?.timeout ?? '5s';
+  const retries = hc?.retries ?? 5;
+  return [
+    `      test: ${JSON.stringify(test)}`,
+    `      interval: ${interval}`,
+    `      timeout: ${timeout}`,
+    `      retries: ${retries}`,
+  ].join('\n');
+}
+
+/**
+ * Build a healthcheck YAML fragment (indented) for a service.
+ * Resolution order:
+ *   1. A matching `health_checks` entry that specifies a raw `test` command (any service, incl. generic ones).
+ *   2. A matching entry whose `type` is a known database type.
+ *   3. (databases only) Built-in defaults for the known database `serviceType`.
+ *
+ * `allowTypeDefault` gates step 3: it is true for databases (a postgres container
+ * should get pg_isready automatically) but false for generic services, so a
+ * service that merely happens to be typed e.g. "redis" does not silently inherit
+ * a `redis-cli` healthcheck its image may not support. Generic services only get
+ * a healthcheck they explicitly declared via `health_checks`.
+ */
 function buildHealthcheckForService(
   serviceName: string,
   serviceType: string,
-  _port: number,
-  healthChecks: HealthCheck[] | undefined
+  healthChecks: HealthCheck[] | undefined,
+  allowTypeDefault: boolean
 ): string | undefined {
   const matched = healthChecks?.find(
     (h) => h.name === serviceName || h.type === serviceType
   );
-  if (matched?.connection_string || matched?.url) {
-    const test =
-      matched.type === 'redis'
-        ? ['CMD', 'redis-cli', 'ping']
-        : matched.type === 'postgresql'
-          ? ['CMD-SHELL', 'pg_isready']
-          : matched.type === 'mysql' || matched.type === 'mariadb'
-            ? ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
-            : matched.type === 'mongodb'
-              ? ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
-              : null;
-    if (test) {
-      const lines = [`      test: ${JSON.stringify(test)}`, '      interval: 10s', '      timeout: 5s', '      retries: 5'];
-      return lines.join('\n');
-    }
+
+  if (matched?.test) {
+    return renderHealthcheckFragment(['CMD-SHELL', matched.test], matched);
   }
-  const defaults: Record<string, string[]> = {
-    postgresql: ['CMD-SHELL', 'pg_isready'],
-    mysql: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost'],
-    mariadb: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost'],
-    mongodb: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"],
-    redis: ['CMD', 'redis-cli', 'ping'],
-  };
-  const test = defaults[serviceType];
+
+  if (matched && DB_HEALTHCHECK_TESTS[matched.type]) {
+    return renderHealthcheckFragment(DB_HEALTHCHECK_TESTS[matched.type], matched);
+  }
+
+  if (!allowTypeDefault) return undefined;
+
+  const test = DB_HEALTHCHECK_TESTS[serviceType];
   if (!test) return undefined;
-  const lines = [`      test: ${JSON.stringify(test)}`, '      interval: 10s', '      timeout: 5s', '      retries: 5'];
-  return lines.join('\n');
+  return renderHealthcheckFragment(test, matched);
 }
 
 function databaseToComposeService(
@@ -92,7 +112,7 @@ function databaseToComposeService(
     if (db.database) env.MONGO_INITDB_DATABASE = db.database;
   }
 
-  const healthcheck = buildHealthcheckForService(name, db.type, port, healthChecks);
+  const healthcheck = buildHealthcheckForService(name, db.type, healthChecks, true);
 
   return {
     name,
@@ -104,17 +124,23 @@ function databaseToComposeService(
   };
 }
 
-function serviceToComposeService(svc: Service, index: number): ComposeService {
+function serviceToComposeService(
+  svc: Service,
+  index: number,
+  healthChecks: HealthCheck[] | undefined
+): ComposeService {
   const name = `${svc.type}_${index + 1}`.replace(/-/g, '_');
   const ports: string[] = [];
   if (svc.port) ports.push(`${svc.port}:${svc.port}`);
   if (svc.management_port) ports.push(`${svc.management_port}:${svc.management_port}`);
+  const healthcheck = buildHealthcheckForService(name, svc.type, healthChecks, false);
   return {
     name,
     image: svc.type,
     version: svc.version,
     ports,
     env: {},
+    healthcheck,
   };
 }
 
@@ -147,16 +173,26 @@ export function generateComposeContent(config: DevEnvConfig, templatesDir: strin
 
   const healthChecks = config.health_checks;
 
+  const skipped: string[] = [];
   config.databases?.forEach((db, i) => {
     const s = databaseToComposeService(db, i, healthChecks);
     if (s) {
       s.name = deduplicateName(s.name);
       services.push(s);
+    } else {
+      skipped.push(db.name ?? `${db.type}_${i + 1}`);
     }
   });
 
+  if (skipped.length > 0) {
+    logger.warn(
+      `Skipped ${skipped.length} database(s) with no Docker image (e.g. sqlite): ${skipped.join(', ')}. ` +
+      'These run as files, not containers, and are omitted from docker-compose.'
+    );
+  }
+
   config.services?.forEach((svc, i) => {
-    const s = serviceToComposeService(svc, i);
+    const s = serviceToComposeService(svc, i, healthChecks);
     s.name = deduplicateName(s.name);
     services.push(s);
   });

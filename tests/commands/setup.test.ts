@@ -149,4 +149,29 @@ describe('setup command', () => {
     const seedCall = calls.find((c) => c[0] === 'npm' && c[1].includes('seed'));
     expect(seedCall).toBeDefined();
   });
+
+  it('runs seed in the configured seed path', async () => {
+    await fs.ensureDir(path.join(tempDir, 'scripts'));
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      [
+        'name: setup-test',
+        'dependencies: []',
+        'databases:',
+        '  - type: postgresql',
+        '    port: 5432',
+        '    seed:',
+        '      command: npm run seed',
+        '      path: ./scripts',
+      ].join('\n')
+    );
+    process.chdir(tempDir);
+
+    await runSetup({ skipDeps: true, skipDb: false });
+
+    const calls = (execFn as jest.Mock).mock.calls as [string, string[], Record<string, unknown>][];
+    const seedCall = calls.find((c) => c[0] === 'npm' && c[1].includes('seed'));
+    expect(seedCall).toBeDefined();
+    expect(seedCall![2].cwd).toBe(path.resolve(tempDir, './scripts'));
+  });
 });
