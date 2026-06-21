@@ -45,6 +45,11 @@ export const HealthCheckSchema = z.object({
   type: z.string(),
   connection_string: z.string().optional(),
   url: z.string().optional(),
+  /** Optional raw shell command run as a Docker CMD-SHELL healthcheck test (used for generic services). */
+  test: z.string().optional(),
+  interval: z.string().optional(),
+  timeout: z.string().optional(),
+  retries: z.number().optional(),
 });
 
 export type HealthCheck = z.infer<typeof HealthCheckSchema>;
