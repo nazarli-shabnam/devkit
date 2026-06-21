@@ -1,4 +1,4 @@
-import { validateConfig, checkConfigWarnings } from '../../../src/core/config/validator';
+﻿import { validateConfig, checkConfigWarnings } from '../../../src/core/config/validator';
 import type { DevEnvConfig } from '../../../src/types/config';
 import { logger } from '../../../src/utils/logger';
 
@@ -87,7 +87,7 @@ describe('validator', () => {
       };
       checkConfigWarnings(config as DevEnvConfig);
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Passwords detected')
+        expect.stringContaining('secrets detected')
       );
     });
 
@@ -98,7 +98,7 @@ describe('validator', () => {
         env: { PASSWORD_RESET_URL: 'https://example.com/reset' },
       };
       checkConfigWarnings(config as unknown as DevEnvConfig);
-      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Passwords detected'));
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('secrets detected'));
     });
 
     it('returns the list of warnings it emits', () => {
@@ -109,7 +109,27 @@ describe('validator', () => {
         ],
       };
       const warnings = checkConfigWarnings(config as DevEnvConfig);
-      expect(warnings.some((w) => w.includes('Passwords detected'))).toBe(true);
+      expect(warnings.some((w) => w.includes('secrets detected'))).toBe(true);
+    });
+
+    it('warns on a hardcoded secret in the env block (secret-like key)', () => {
+      const config = {
+        name: 'app',
+        databases: [{ type: 'redis' as const, port: 6379, host: 'localhost' }],
+        env: { API_KEY: 'sk-live-abc123' },
+      };
+      checkConfigWarnings(config as unknown as DevEnvConfig);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('secrets detected'));
+    });
+
+    it('does not warn on an env placeholder secret value', () => {
+      const config = {
+        name: 'app',
+        databases: [{ type: 'redis' as const, port: 6379, host: 'localhost' }],
+        env: { API_KEY: '${API_KEY}' },
+      };
+      checkConfigWarnings(config as unknown as DevEnvConfig);
+      expect(warnSpy).not.toHaveBeenCalled();
     });
 
     it('warns when postgresql missing user or password', () => {

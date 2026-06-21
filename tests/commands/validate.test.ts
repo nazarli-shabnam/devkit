@@ -63,6 +63,27 @@ describe('validate command', () => {
     await expect(runValidate({ strict: true })).rejects.toThrow(/--strict|unresolved/);
   });
 
+  it('does not flag a correctly-externalized secret as hardcoded under --strict', async () => {
+    // Regression: checkConfigWarnings must run on the raw config so that a
+    // ${DB_PASSWORD} resolved from .env is not mistaken for a hardcoded secret.
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      [
+        'name: app',
+        'databases:',
+        '  - type: postgresql',
+        '    port: 5432',
+        '    user: ${DB_USER}',
+        '    password: ${DB_PASSWORD}',
+        '    database: app',
+      ].join('\n')
+    );
+    await fs.writeFile(path.join(tempDir, '.env'), 'DB_USER=u\nDB_PASSWORD=secret123\n');
+    process.chdir(tempDir);
+
+    await expect(runValidate({ strict: true })).resolves.toBeUndefined();
+  });
+
   it('resolves a variable defined in the config env block', async () => {
     await fs.writeFile(
       path.join(tempDir, '.dev-env.yml'),

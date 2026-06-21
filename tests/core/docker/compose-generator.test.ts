@@ -95,6 +95,17 @@ describe('compose-generator', () => {
       expect(content).toContain('retries: 3');
     });
 
+    it('does not auto-apply a DB healthcheck to a generic service by coincidental type', () => {
+      const config = {
+        name: 'app',
+        services: [{ type: 'redis', port: 6379, host: 'localhost' }],
+        docker: {},
+      } as DevEnvConfig;
+      const content = generateComposeContent(config, templatesDir);
+      expect(content).toContain('redis_1:');
+      expect(content).not.toContain('healthcheck:');
+    });
+
     it('includes custom service with port and management_port', () => {
       const config = {
         name: 'app',

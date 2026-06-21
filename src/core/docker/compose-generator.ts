@@ -48,13 +48,19 @@ function renderHealthcheckFragment(test: string[], hc?: HealthCheck): string {
  * Resolution order:
  *   1. A matching `health_checks` entry that specifies a raw `test` command (any service, incl. generic ones).
  *   2. A matching entry whose `type` is a known database type.
- *   3. Built-in defaults for known database `serviceType`s.
- * Returns undefined when no healthcheck can be determined (e.g. an unknown generic service with no `test`).
+ *   3. (databases only) Built-in defaults for the known database `serviceType`.
+ *
+ * `allowTypeDefault` gates step 3: it is true for databases (a postgres container
+ * should get pg_isready automatically) but false for generic services, so a
+ * service that merely happens to be typed e.g. "redis" does not silently inherit
+ * a `redis-cli` healthcheck its image may not support. Generic services only get
+ * a healthcheck they explicitly declared via `health_checks`.
  */
 function buildHealthcheckForService(
   serviceName: string,
   serviceType: string,
-  healthChecks: HealthCheck[] | undefined
+  healthChecks: HealthCheck[] | undefined,
+  allowTypeDefault: boolean
 ): string | undefined {
   const matched = healthChecks?.find(
     (h) => h.name === serviceName || h.type === serviceType
@@ -67,6 +73,8 @@ function buildHealthcheckForService(
   if (matched && DB_HEALTHCHECK_TESTS[matched.type]) {
     return renderHealthcheckFragment(DB_HEALTHCHECK_TESTS[matched.type], matched);
   }
+
+  if (!allowTypeDefault) return undefined;
 
   const test = DB_HEALTHCHECK_TESTS[serviceType];
   if (!test) return undefined;
@@ -104,7 +112,7 @@ function databaseToComposeService(
     if (db.database) env.MONGO_INITDB_DATABASE = db.database;
   }
 
-  const healthcheck = buildHealthcheckForService(name, db.type, healthChecks);
+  const healthcheck = buildHealthcheckForService(name, db.type, healthChecks, true);
 
   return {
     name,
@@ -125,7 +133,7 @@ function serviceToComposeService(
   const ports: string[] = [];
   if (svc.port) ports.push(`${svc.port}:${svc.port}`);
   if (svc.management_port) ports.push(`${svc.management_port}:${svc.management_port}`);
-  const healthcheck = buildHealthcheckForService(name, svc.type, healthChecks);
+  const healthcheck = buildHealthcheckForService(name, svc.type, healthChecks, false);
   return {
     name,
     image: svc.type,

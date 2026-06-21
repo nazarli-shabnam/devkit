@@ -28,6 +28,16 @@ function isLiteralSecret(value: string | undefined): boolean {
   return !!value && !value.includes('${');
 }
 
+const SECRET_KEY_WORDS = ['password', 'secret', 'token', 'key', 'pass', 'auth', 'apikey'];
+
+// True only when the env key clearly NAMES a secret, judged by its last
+// underscore/hyphen segment — so DB_PASSWORD / API_KEY match, but benign keys
+// like PASSWORD_RESET_URL (ends in "url") do not.
+function isSecretEnvKey(key: string): boolean {
+  const last = key.split(/[_-]/).pop()?.toLowerCase() ?? '';
+  return SECRET_KEY_WORDS.includes(last);
+}
+
 /**
  * Check for common configuration issues. Each issue is logged as a warning and
  * also returned, so callers (e.g. `validate --strict`) can act on them.
@@ -39,11 +49,17 @@ export function checkConfigWarnings(config: DevEnvConfig): string[] {
     logger.warn(msg);
   };
 
-  // Check for hardcoded passwords in known secret locations (should be in .env).
-  // Only inspect real secret fields so keys like `password_reset_url` don't false-positive.
-  if (config.databases?.some((db) => isLiteralSecret(db.password))) {
+  // Check for hardcoded secrets in known secret locations (should be in .env).
+  // Only inspect real secret fields so keys like `password_reset_url` don't false-positive:
+  //   - database passwords
+  //   - env values whose KEY looks secret-bearing (password/secret/token/key/auth)
+  const hardcodedDbPassword = config.databases?.some((db) => isLiteralSecret(db.password));
+  const hardcodedEnvSecret = Object.entries(config.env ?? {}).some(
+    ([key, value]) => isSecretEnvKey(key) && isLiteralSecret(value)
+  );
+  if (hardcodedDbPassword || hardcodedEnvSecret) {
     warn(
-      'Warning: Passwords detected in configuration file.\n' +
+      'Warning: Hardcoded secrets detected in configuration file.\n' +
       'Consider using environment variables (${VAR_NAME}) and .env file for secrets.'
     );
   }
