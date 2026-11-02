@@ -33,9 +33,9 @@ export async function runSnapshotList(): Promise<void> {
     return;
   }
 
-  logger.step(`Found ${snapshots.length} snapshot(s):`);
+  logger.output(`Found ${snapshots.length} snapshot(s):`);
   for (const s of snapshots) {
-    logger.info(`  ${s.name}  (${s.createdAt})`);
+    logger.output(`  ${s.name}  (${s.createdAt})`);
   }
 }
 

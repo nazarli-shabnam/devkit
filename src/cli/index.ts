@@ -33,7 +33,7 @@ program
 
 program
   .option('-v, --verbose', 'Enable verbose logging')
-  .option('-q, --quiet', 'Suppress output')
+  .option('-q, --quiet', 'Only print errors (requested data such as `snapshot list` is still shown)')
   .hook('preAction', (thisCommand) => {
     if (thisCommand.opts().verbose) {
       logger.setLevel(0);
