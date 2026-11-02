@@ -11,6 +11,7 @@ describe('--dry-run never launches the init wizard (it must not write files)', (
   let root: string;
   const originalCwd = process.cwd();
   const originalTty = process.stdout.isTTY;
+  const originalStdinTty = process.stdin.isTTY;
   let runInit: jest.SpyInstance;
 
   beforeEach(async () => {
@@ -22,11 +23,13 @@ describe('--dry-run never launches the init wizard (it must not write files)', (
     process.chdir(root);
     // Pretend to be a terminal: that is the only situation in which the wizard is offered.
     Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
     runInit = jest.spyOn(init, 'runInit').mockImplementation(async () => undefined);
   });
 
   afterEach(async () => {
     Object.defineProperty(process.stdout, 'isTTY', { value: originalTty, configurable: true });
+    Object.defineProperty(process.stdin, 'isTTY', { value: originalStdinTty, configurable: true });
     process.chdir(originalCwd);
     await fs.remove(root).catch(() => {});
     jest.restoreAllMocks();
