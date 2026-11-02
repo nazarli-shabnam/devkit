@@ -1,9 +1,12 @@
+import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
 import { DevEnvConfig, DevEnvConfigSchema } from '../types/config';
 import { fileExists, readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
 import { displayPath, resolveOutputPath } from '../utils/paths';
+import { confirmOverwrite, generatedHeader } from '../utils/overwrite';
+import { createSnapshot } from '../core/snapshot/storage';
 
 
 export function sanitizeConfigForShare(config: DevEnvConfig): DevEnvConfig {
@@ -55,6 +58,8 @@ export function sanitizeConfigForShare(config: DevEnvConfig): DevEnvConfig {
 
 export interface ShareExportOptions {
   output?: string;
+  /** Overwrite an existing file that envkit did not generate. */
+  force?: boolean;
 }
 
 export async function runShareExport(options: ShareExportOptions = {}): Promise<void> {
@@ -64,9 +69,13 @@ export async function runShareExport(options: ShareExportOptions = {}): Promise<
   const sanitized = sanitizeConfigForShare(config);
   // Ensure sanitized output still validates (e.g. schema hasn't drifted)
   DevEnvConfigSchema.parse(sanitized);
-  const yamlContent = yaml.dump(sanitized, { lineWidth: -1 });
+  const yamlContent = generatedHeader('envkit share export') + yaml.dump(sanitized, { lineWidth: -1 });
 
   const outPath = resolveOutputPath(options.output, 'dev-env.shared.yml', projectRoot);
+  if (!(await confirmOverwrite(outPath, { force: options.force, displayName: displayPath(outPath), regenerable: true }))) {
+    logger.info('Cancelled. The existing file was left unchanged.');
+    return;
+  }
 
   await writeFile(outPath, yamlContent);
   logger.success(`Exported sanitized config to ${displayPath(outPath)}`);
@@ -75,6 +84,8 @@ export async function runShareExport(options: ShareExportOptions = {}): Promise<
 export interface ShareImportOptions {
   output?: string;
   validateOnly?: boolean;
+  /** Overwrite an existing target without asking (a backup of the project config is still saved). */
+  force?: boolean;
 }
 
 export async function runShareImport(filePath: string, options: ShareImportOptions = {}): Promise<void> {
@@ -104,7 +115,19 @@ export async function runShareImport(filePath: string, options: ShareImportOptio
     return;
   }
 
-  const outPath = resolveOutputPath(options.output, '.dev-env.yml', await findProjectRoot(process.cwd()));
+  const projectRoot = await findProjectRoot(process.cwd());
+  const outPath = resolveOutputPath(options.output, '.dev-env.yml', projectRoot);
+
+  if (!(await confirmOverwrite(outPath, { force: options.force, displayName: displayPath(outPath) }))) {
+    logger.info('Cancelled. The existing file was left unchanged.');
+    return;
+  }
+  // Importing replaces the project config; keep what was there recoverable via `snapshot restore`.
+  if (path.resolve(outPath) === path.join(projectRoot, '.dev-env.yml') && (await fileExists(outPath))) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const backup = await createSnapshot(projectRoot, `pre-import-${stamp}`, await readFile(outPath));
+    logger.info(`Backed up current config to snapshot "${backup.name}".`);
+  }
 
   const yamlContent = yaml.dump(parsed.data, { lineWidth: -1 });
   await writeFile(outPath, yamlContent);

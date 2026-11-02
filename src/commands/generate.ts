@@ -5,10 +5,13 @@ import { generateComposeContent } from '../core/docker/compose-generator';
 import { logger } from '../utils/logger';
 import { writeFile } from '../utils/file-ops';
 import { displayPath, resolveOutputPath } from '../utils/paths';
+import { confirmOverwrite, generatedHeader } from '../utils/overwrite';
 
 export interface GenerateOptions {
   output?: string;
   dryRun?: boolean;
+  /** Overwrite an existing file that envkit did not generate. */
+  force?: boolean;
 }
 
 function getTemplatesDir(): string {
@@ -30,11 +33,16 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
   const outPath = resolveOutputPath(options.output, 'docker-compose.yml', projectRoot);
 
   const templatesDir = getTemplatesDir();
-  const content = generateComposeContent(config, templatesDir);
+  const content = generatedHeader('docker compose') + generateComposeContent(config, templatesDir);
 
   if (options.dryRun) {
     // Print to stdout without writing, so it can be inspected or piped.
     process.stdout.write(content.endsWith('\n') ? content : content + '\n');
+    return;
+  }
+
+  if (!(await confirmOverwrite(outPath, { force: options.force, displayName: displayPath(outPath), regenerable: true }))) {
+    logger.info('Cancelled. The existing file was left unchanged.');
     return;
   }
 

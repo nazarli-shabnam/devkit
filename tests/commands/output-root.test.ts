@@ -47,7 +47,7 @@ describe('default outputs go to the project root, explicit ones to the cwd', () 
     expect(await fs.pathExists(path.join(sub, 'dev-env.shared.yml'))).toBe(false);
 
     await fs.writeFile(path.join(sub, 'incoming.yml'), 'name: imported\n');
-    await runShareImport('incoming.yml', {});
+    await runShareImport('incoming.yml', { force: true });
     expect(await fs.readFile(path.join(root, '.dev-env.yml'), 'utf-8')).toContain('name: imported');
     expect(await fs.pathExists(path.join(sub, '.dev-env.yml'))).toBe(false);
   });
