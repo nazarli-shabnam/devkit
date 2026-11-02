@@ -1,5 +1,6 @@
 import type { ExecaReturnValue } from 'execa';
 import { logger } from './logger';
+import { fileExists } from './file-ops';
 import { isWindows, getShell } from './platform';
 
 export interface ExecOptions {
@@ -29,6 +30,12 @@ export async function exec(
     logger.debug(`Executing: ${command} ${args.join(' ')}`);
   }
 
+  // Node reports a missing cwd as ENOENT for the *command* ("spawn npm ENOENT"), which sends people
+  // looking for a missing tool. Say what is actually wrong.
+  if (cwd && !(await fileExists(cwd))) {
+    throw new Error(`Working directory not found: ${cwd}. Check the "path" setting of this command in .dev-env.yml.`);
+  }
+
   const execa = await getExeca();
   try {
     const result = await execa(command, args, {
@@ -40,8 +47,9 @@ export async function exec(
 
     return result;
   } catch (error: any) {
+    // The thrown error already says which command failed and how ("Command failed with exit code
+    // 1: npm install"); the CLI prints it once. Only add what that message does not contain.
     if (!silent) {
-      logger.error(`Command failed: ${command} ${args.join(' ')}`);
       if (error.stdout) {
         logger.error(`Stdout: ${error.stdout}`);
       }
