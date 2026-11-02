@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs-extra';
-import { runSnapshotCreate, runSnapshotList, runSnapshotRestore } from '../../src/commands/snapshot';
+import { runSnapshotCreate, runSnapshotRestore } from '../../src/commands/snapshot';
 import { listSnapshots, snapshotExists, uniqueSnapshotName, createSnapshot } from '../../src/core/snapshot/storage';
 import { logger } from '../../src/utils/logger';
 
@@ -56,6 +56,20 @@ describe('snapshot create: no silent overwrite, no silent renames', () => {
     expect(await listSnapshots(root)).toHaveLength(0);
   });
 
+  it('two unnamed snapshots in the same second both succeed', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2030-01-01T00:00:00Z'));
+    try {
+      await runSnapshotCreate();
+      await runSnapshotCreate();
+    } finally {
+      jest.useRealTimers();
+    }
+    expect((await listSnapshots(root)).map((s) => s.name).sort()).toEqual([
+      'snapshot-2030-01-01T00-00-00',
+      'snapshot-2030-01-01T00-00-00-2',
+    ]);
+  });
+
   it('still auto-names unnamed snapshots', async () => {
     await runSnapshotCreate();
     const [snapshot] = await listSnapshots(root);
@@ -97,12 +111,5 @@ describe('storage helpers', () => {
     expect(await snapshotExists(root, 'a.')).toBe(true); // checks the stored (sanitized) name
     expect(await uniqueSnapshotName(root, 'a')).toBe('a-3');
     expect(await uniqueSnapshotName(root, 'fresh')).toBe('fresh');
-  });
-});
-
-// keep the list command exercised alongside the new guard
-describe('snapshot list after guarded creates', () => {
-  it('has no unused-import lint noise', () => {
-    expect(typeof runSnapshotList).toBe('function');
   });
 });

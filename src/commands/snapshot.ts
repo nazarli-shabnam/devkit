@@ -31,7 +31,8 @@ export async function runSnapshotCreate(name?: string, options: SnapshotCreateOp
   const configYaml = await readFile(configPath);
 
   const requested = name?.trim();
-  let snapshotName = `snapshot-${timestamp()}`;
+  // Unnamed snapshots get a timestamp name; two within the same second must not collide.
+  let snapshotName = await uniqueSnapshotName(projectRoot, `snapshot-${timestamp()}`);
   if (requested) {
     if (!/[A-Za-z0-9]/.test(requested)) {
       throw new Error(`Snapshot name "${requested}" needs at least one letter or digit.`);
