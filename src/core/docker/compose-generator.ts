@@ -10,6 +10,8 @@ export interface ComposeService {
   version?: string;
   ports: string[];
   env: Record<string, string>;
+  /** Pre-rendered YAML-safe `KEY=value` list items (double-quoted, `$` escaped for Compose), set at render time */
+  envLines?: string[];
   /** Pre-rendered YAML fragment for healthcheck (indented), or undefined to omit */
   healthcheck?: string;
 }
@@ -30,6 +32,15 @@ const DB_HEALTHCHECK_TESTS: Record<string, string[]> = {
   mongodb: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"],
   redis: ['CMD', 'redis-cli', 'ping'],
 };
+
+/**
+ * Render one `KEY=value` environment entry as a double-quoted YAML scalar.
+ * JSON string syntax is valid YAML, so quotes/colons/`#` in values stay literal;
+ * `$` is doubled because Compose would otherwise interpolate it.
+ */
+export function renderEnvEntry(key: string, value: string): string {
+  return JSON.stringify(`${key}=${value.replace(/\$/g, '$$$$')}`);
+}
 
 function renderHealthcheckFragment(test: string[], hc?: HealthCheck): string {
   const interval = hc?.interval ?? '10s';
@@ -200,6 +211,10 @@ export function generateComposeContent(config: DevEnvConfig, templatesDir: strin
   const networkName = config.docker?.network_name ?? 'dev-network';
 
   const template = loadComposeTemplate(templatesDir);
-  const compiled = Handlebars.compile(template);
+  // noEscape: output is YAML, not HTML; HTML-escaping would corrupt values like `p&ss=w'rd`.
+  const compiled = Handlebars.compile(template, { noEscape: true });
+  for (const s of services) {
+    s.envLines = Object.entries(s.env).map(([k, v]) => renderEnvEntry(k, v));
+  }
   return compiled({ services, networkName });
 }

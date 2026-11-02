@@ -165,6 +165,42 @@ describe('compose-generator', () => {
       expect(content).toContain('db_2:');
     });
 
+    describe('environment value rendering', () => {
+      const yaml = require('js-yaml');
+      const render = (password: string) =>
+        generateComposeContent(
+          {
+            name: 'app',
+            databases: [{ type: 'postgresql' as const, user: 'u', password, host: 'localhost' }],
+          } as DevEnvConfig,
+          templatesDir
+        );
+      const envOf = (content: string): string[] => yaml.load(content).services.postgresql_1.environment;
+
+      it('does not HTML-escape special characters in values', () => {
+        const pw = "p&ss=w'rd<>\"`";
+        expect(envOf(render(pw))).toContain(`POSTGRES_PASSWORD=${pw}`);
+      });
+
+      it('keeps values containing ": " and " #" as a single literal list item', () => {
+        expect(envOf(render('x: y'))).toContain('POSTGRES_PASSWORD=x: y');
+        expect(envOf(render('a #b'))).toContain('POSTGRES_PASSWORD=a #b');
+      });
+
+      it('escapes $ so Compose does not interpolate literal values', () => {
+        expect(envOf(render('pa$word'))).toContain('POSTGRES_PASSWORD=pa$$word');
+      });
+
+      it('does not HTML-escape service names, images or versions', () => {
+        const content = generateComposeContent(
+          { name: 'app', services: [{ type: 'redis', version: '7&x', host: 'localhost' }] } as DevEnvConfig,
+          templatesDir
+        );
+        expect(content).toContain('image: redis:7&x');
+        expect(content).not.toContain('&amp;');
+      });
+    });
+
     it('throws when templates dir has no docker-compose.hbs', () => {
       const fs = require('fs');
       const os = require('os');

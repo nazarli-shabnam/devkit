@@ -10,10 +10,10 @@ services:
       - "{{this}}"
       {{/each}}
     {{/if}}
-    {{#if env}}
+    {{#if envLines}}
     environment:
-      {{#each env}}
-      - {{@key}}={{this}}
+      {{#each envLines}}
+      - {{{this}}}
       {{/each}}
     {{/if}}
     {{#if healthcheck}}
