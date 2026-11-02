@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
+import { findProjectRoot, loadConfigOrPromptInit, loadRawConfig } from '../core/config/loader';
 import { DevEnvConfig, DevEnvConfigSchema } from '../types/config';
 import { fileExists, readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
@@ -66,11 +66,13 @@ export interface ShareExportOptions {
 
 export async function runShareExport(options: ShareExportOptions = {}): Promise<void> {
   const projectRoot = await findProjectRoot(process.cwd());
-  const config = await loadConfigOrPromptInit(projectRoot);
+  // Loading validates the config (and offers `init` when it is missing)...
+  await loadConfigOrPromptInit(projectRoot);
+  // ...but the export is built from the file as written: ${VAR} references stay references, so a
+  // secret used anywhere (commands, health checks, hosts, ...) is never baked in as its value.
+  const raw = (await loadRawConfig(projectRoot)) as DevEnvConfig;
 
-  const sanitized = sanitizeConfigForShare(config);
-  // Ensure sanitized output still validates (e.g. schema hasn't drifted)
-  DevEnvConfigSchema.parse(sanitized);
+  const sanitized = sanitizeConfigForShare(raw);
   const yamlContent = yaml.dump(sanitized, { lineWidth: -1 });
 
   const outputFile = (options.output?.trim() || 'dev-env.shared.yml');
