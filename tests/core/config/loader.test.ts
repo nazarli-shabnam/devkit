@@ -185,6 +185,8 @@ describe('config loader', () => {
       const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean };
       const original = stdout.isTTY;
       stdout.isTTY = true;
+      const origStdinTTY = process.stdin.isTTY;
+      process.stdin.isTTY = true;
       jest.mocked(prompts as any).mockResolvedValueOnce({ value: false });
       try {
         await expect(loadConfigOrPromptInit(tempDir)).rejects.toThrow(/envkit init/);
@@ -192,6 +194,7 @@ describe('config loader', () => {
         expect(runInit).not.toHaveBeenCalled();
       } finally {
         stdout.isTTY = original;
+        process.stdin.isTTY = origStdinTTY;
       }
     });
 
@@ -199,6 +202,8 @@ describe('config loader', () => {
       const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean };
       const original = stdout.isTTY;
       stdout.isTTY = true;
+      const origStdinTTY = process.stdin.isTTY;
+      process.stdin.isTTY = true;
       jest.mocked(prompts as any).mockResolvedValueOnce({ value: true });
 
       jest.mocked(runInit).mockImplementationOnce(async (root: string) => {
@@ -212,6 +217,7 @@ describe('config loader', () => {
         expect(cfg.name).toBe('test-project');
       } finally {
         stdout.isTTY = original;
+        process.stdin.isTTY = origStdinTTY;
       }
     });
   });

@@ -3,6 +3,7 @@ import * as yaml from 'js-yaml';
 import prompts from 'prompts';
 import { fileExists, readJson, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
+import { exitOnCancel, isInteractive as terminalAvailable } from '../utils/prompt';
 import {
   DevEnvConfig,
   DevEnvConfigSchema,
@@ -27,7 +28,7 @@ const DEFAULT_DEPENDENCY_COMMANDS: Record<string, string> = {
 };
 
 export function isInteractive(): boolean {
-  return Boolean(process.stdout.isTTY);
+  return terminalAvailable();
 }
 
 export async function getDefaultProjectName(projectRoot: string): Promise<string> {
@@ -64,7 +65,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
         initial: '1.0.0',
       },
     ],
-    { onCancel: () => process.exit(0) }
+    { onCancel: exitOnCancel }
   );
 
   const addDeps = await prompts(
@@ -74,7 +75,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
       message: 'Add dependencies? (optional)',
       initial: true,
     },
-    { onCancel: () => process.exit(0) }
+    { onCancel: exitOnCancel }
   );
 
   const dependencies: Dependency[] = [];
@@ -87,7 +88,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
         choices: DEPENDENCY_TYPES.map((t) => ({ title: t, value: t })),
         min: 1,
       },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     for (const type of depTypes.types as string[]) {
       const cmd = await prompts(
@@ -105,7 +106,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
             initial: DEFAULT_DEPENDENCY_COMMANDS[type] ?? '',
           },
         ],
-        { onCancel: () => process.exit(0) }
+        { onCancel: exitOnCancel }
       );
       if (cmd.command?.trim()) {
         dependencies.push({ type: type as Dependency['type'], command: cmd.command.trim(), path: cmd.path?.trim() || '.' });
@@ -123,7 +124,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
         message: databases.length === 0 ? 'Add a database? (optional)' : 'Add another database?',
         initial: databases.length === 0 ? false : false,
       },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (!addDb.value) break;
 
@@ -134,7 +135,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
         message: 'Database type',
         choices: [...DATABASE_TYPES.map((t) => ({ title: t, value: t })), { title: 'None', value: 'none' }],
       },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (dbChoice.type === 'none') break;
 
@@ -151,7 +152,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     if (dbChoice.type !== 'redis' && dbChoice.type !== 'sqlite') {
       dbPrompts.push({ type: 'text', name: 'database', message: 'Database name', initial: 'myapp' });
     }
-    const dbAnswers = await prompts(dbPrompts, { onCancel: () => process.exit(0) });
+    const dbAnswers = await prompts(dbPrompts, { onCancel: exitOnCancel });
     const db: Database = {
       type: dbChoice.type as Database['type'],
       name: dbAnswers.name || undefined,
@@ -163,7 +164,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     };
     const addMigrations = await prompts(
       { type: 'confirm', name: 'value', message: 'Add migrations?', initial: false },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (addMigrations.value) {
       const mig = await prompts(
@@ -171,13 +172,13 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
           { type: 'text', name: 'path', message: 'Migrations path', initial: './migrations' },
           { type: 'text', name: 'command', message: 'Migrations command', initial: 'npm run migrate' },
         ],
-        { onCancel: () => process.exit(0) }
+        { onCancel: exitOnCancel }
       );
       db.migrations = [{ path: mig.path || './migrations', command: mig.command || 'npm run migrate' }];
     }
     const addSeed = await prompts(
       { type: 'confirm', name: 'value', message: 'Add seed command?', initial: false },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (addSeed.value) {
       const seedCmd = await prompts(
@@ -185,7 +186,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
           { type: 'text', name: 'command', message: 'Seed command', initial: 'npm run seed' },
           { type: 'text', name: 'path', message: 'Seed path', initial: '.' },
         ],
-        { onCancel: () => process.exit(0) }
+        { onCancel: exitOnCancel }
       );
       db.seed = { command: seedCmd.command || 'npm run seed', path: seedCmd.path?.trim() || '.' };
     }
@@ -202,7 +203,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
         message: services.length === 0 ? 'Add a service (e.g. RabbitMQ, Redis)? (optional)' : 'Add another service?',
         initial: false,
       },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (!addService.value) break;
 
@@ -213,7 +214,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
         { type: 'number', name: 'port', message: 'Port', initial: 5672 },
         { type: 'number', name: 'management_port', message: 'Management port (optional, 0 to skip)', initial: 15672 },
       ],
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (svc.type?.trim()) {
       services.push({
@@ -227,7 +228,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
 
   const addEnv = await prompts(
     { type: 'confirm', name: 'value', message: 'Add environment variables? (optional)', initial: true },
-    { onCancel: () => process.exit(0) }
+    { onCancel: exitOnCancel }
   );
 
   let env: Record<string, string> = {};
@@ -241,7 +242,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
 
   const dockerEnabled = await prompts(
     { type: 'confirm', name: 'value', message: 'Enable Docker Compose generation? (optional)', initial: true },
-    { onCancel: () => process.exit(0) }
+    { onCancel: exitOnCancel }
   );
 
   const docker = dockerEnabled.value
@@ -277,7 +278,7 @@ export async function runInit(projectRoot: string): Promise<void> {
   if (await fileExists(configPath)) {
     const overwrite = await prompts(
       { type: 'confirm', name: 'value', message: 'File .dev-env.yml already exists. Overwrite?', initial: false },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (!overwrite.value) {
       logger.info('Skipped. Existing .dev-env.yml was not changed.');

@@ -10,6 +10,7 @@ describe('init wizard (runInit)', () => {
   let tempDir: string;
   const originalCwd = process.cwd();
   const originalTTY = process.stdout.isTTY;
+  const originalStdinTTY = process.stdin.isTTY;
 
   beforeEach(async () => {
     jest.spyOn(logger, 'info').mockImplementation();
@@ -18,12 +19,14 @@ describe('init wizard (runInit)', () => {
     jest.spyOn(logger, 'debug').mockImplementation();
     // Force interactive so runInit drives the wizard.
     process.stdout.isTTY = true;
+    process.stdin.isTTY = true;
     tempDir = path.join(require('os').tmpdir(), `devkit-initw-${Date.now()}-${Math.floor(performance.now())}`);
     await fs.ensureDir(tempDir);
   });
 
   afterEach(async () => {
     process.stdout.isTTY = originalTTY;
+    process.stdin.isTTY = originalStdinTTY;
     process.chdir(originalCwd);
     await fs.remove(tempDir).catch(() => {});
     jest.restoreAllMocks();

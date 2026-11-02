@@ -4,6 +4,7 @@ import * as dotenv from 'dotenv';
 import prompts from 'prompts';
 import { fileExists, readFile } from '../../utils/file-ops';
 import { logger } from '../../utils/logger';
+import { exitOnCancel, isInteractive } from '../../utils/prompt';
 import { DevEnvConfig, DevEnvConfigSchema } from '../../types/config';
 import { resolvePath } from '../../utils/platform';
 import { runInit } from '../../commands/init';
@@ -136,7 +137,7 @@ export async function loadConfigOrPromptInit(projectRoot: string = process.cwd()
     `Configuration file not found: ${configPath}\n` +
     `Run \`envkit init\` to create one, or create a .dev-env.yml file in your project root.`;
 
-  if (!process.stdout.isTTY) {
+  if (!isInteractive()) {
     throw new Error(baseMsg);
   }
 
@@ -158,11 +159,7 @@ export async function loadConfigOrPromptInit(projectRoot: string = process.cwd()
         return 'Please answer y (yes) or n (no)';
       },
     },
-    {
-      onCancel: () => {
-        process.exit(0);
-      },
-    }
+    { onCancel: exitOnCancel }
   );
 
   const runInitNow = answer?.value === true;
