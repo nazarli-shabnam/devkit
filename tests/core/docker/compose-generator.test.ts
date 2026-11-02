@@ -50,7 +50,7 @@ describe('compose-generator', () => {
       expect(content).toContain('healthcheck:');
       expect(content).toMatch(/pg_isready|postgres/);
       expect(content).toMatch(/redis-cli|ping/);
-      expect(content).toContain('interval: 10s');
+      expect(content).toContain('interval: "10s"');
     });
 
     it('skips sqlite (no container service)', () => {
@@ -91,7 +91,7 @@ describe('compose-generator', () => {
       const content = generateComposeContent(config, templatesDir);
       expect(content).toContain('healthcheck:');
       expect(content).toContain('rabbitmq-diagnostics ping');
-      expect(content).toContain('interval: 30s');
+      expect(content).toContain('interval: "30s"');
       expect(content).toContain('retries: 3');
     });
 
@@ -147,7 +147,7 @@ describe('compose-generator', () => {
       const content = generateComposeContent(config, templatesDir);
       expect(content).toContain('healthcheck:');
       expect(content).toMatch(/mysqladmin|mongosh/);
-      expect(content).toContain('interval: 10s');
+      expect(content).toContain('interval: "10s"');
     });
 
     it('deduplicates service names when databases would collide', () => {
@@ -216,6 +216,22 @@ describe('compose-generator', () => {
       expect(doc.services.redis_1.privileged).toBeUndefined();
       expect(doc.services.redis_1.networks).toEqual(['n: x']);
       expect(Object.keys(doc.networks)).toEqual(['n: x']);
+    });
+
+    it('quotes healthcheck interval/timeout so they cannot inject YAML keys', () => {
+      const yaml = require('js-yaml');
+      const content = generateComposeContent(
+        {
+          name: 'app',
+          databases: [{ type: 'redis' as const, host: 'localhost' }],
+          health_checks: [{ name: 'redis_1', type: 'redis', interval: '5s\n    privileged: true', timeout: '3s' }],
+        } as DevEnvConfig,
+        templatesDir
+      );
+      const svc = yaml.load(content).services.redis_1;
+      expect(svc.privileged).toBeUndefined();
+      expect(svc.healthcheck.interval).toBe('5s\n    privileged: true');
+      expect(svc.healthcheck.timeout).toBe('3s');
     });
 
     it('throws when templates dir has no docker-compose.hbs', () => {

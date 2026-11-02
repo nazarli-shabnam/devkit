@@ -50,8 +50,8 @@ function renderHealthcheckFragment(test: string[], hc?: HealthCheck): string {
   const retries = hc?.retries ?? 5;
   return [
     `      test: ${JSON.stringify(test)}`,
-    `      interval: ${interval}`,
-    `      timeout: ${timeout}`,
+    `      interval: ${JSON.stringify(String(interval))}`,
+    `      timeout: ${JSON.stringify(String(timeout))}`,
     `      retries: ${retries}`,
   ].join('\n');
 }
