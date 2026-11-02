@@ -4,13 +4,7 @@ import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
 import { DevEnvConfig, DevEnvConfigSchema } from '../types/config';
 import { fileExists, readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
-
-function validateOutputPath(outPath: string, baseDir: string): void {
-  const resolved = path.resolve(baseDir, outPath);
-  if (!resolved.startsWith(baseDir)) {
-    throw new Error(`Output path "${outPath}" would write outside the working directory. Use an absolute path if intended.`);
-  }
-}
+import { assertRelativeOutputInside } from '../utils/paths';
 
 
 export function sanitizeConfigForShare(config: DevEnvConfig): DevEnvConfig {
@@ -76,9 +70,7 @@ export async function runShareExport(options: ShareExportOptions = {}): Promise<
   const outputFile = (options.output?.trim() || 'dev-env.shared.yml');
   const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);
 
-  if (!path.isAbsolute(outputFile)) {
-    validateOutputPath(outputFile, process.cwd());
-  }
+  assertRelativeOutputInside(outputFile, process.cwd());
 
   await writeFile(outPath, yamlContent);
   logger.success(`Exported sanitized config to ${outputFile}`);
@@ -119,9 +111,7 @@ export async function runShareImport(filePath: string, options: ShareImportOptio
   const outputFile = (options.output?.trim() || '.dev-env.yml');
   const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);
 
-  if (!path.isAbsolute(outputFile)) {
-    validateOutputPath(outputFile, process.cwd());
-  }
+  assertRelativeOutputInside(outputFile, process.cwd());
 
   const yamlContent = yaml.dump(parsed.data, { lineWidth: -1 });
   await writeFile(outPath, yamlContent);

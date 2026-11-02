@@ -4,6 +4,7 @@ import { checkConfigWarnings } from '../core/config/validator';
 import { generateComposeContent } from '../core/docker/compose-generator';
 import { logger } from '../utils/logger';
 import { writeFile } from '../utils/file-ops';
+import { assertRelativeOutputInside } from '../utils/paths';
 
 export interface GenerateOptions {
   output?: string;
@@ -28,12 +29,7 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
     return;
   }
 
-  if (!path.isAbsolute(outputFile)) {
-    const resolved = path.resolve(process.cwd(), outputFile);
-    if (!resolved.startsWith(process.cwd())) {
-      throw new Error(`Output path "${outputFile}" would write outside the working directory. Use an absolute path if intended.`);
-    }
-  }
+  assertRelativeOutputInside(outputFile, process.cwd());
 
   const templatesDir = getTemplatesDir();
   const content = generateComposeContent(config, templatesDir);
