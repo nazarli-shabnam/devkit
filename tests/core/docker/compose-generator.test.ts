@@ -165,6 +165,28 @@ describe('compose-generator', () => {
       expect(content).toContain('db_2:');
     });
 
+    describe('mysql/mariadb users', () => {
+      const envFor = (db: Record<string, unknown>): string[] => {
+        const content = generateComposeContent(
+          { name: 'app', databases: [{ type: 'mysql', host: 'localhost', ...db }] } as DevEnvConfig,
+          templatesDir
+        );
+        return require('js-yaml').load(content).services.mysql_1.environment;
+      };
+
+      it('sets only MYSQL_ROOT_PASSWORD when user is root', () => {
+        const env = envFor({ user: 'root', password: 'pw', database: 'app' });
+        expect(env).toContain('MYSQL_ROOT_PASSWORD=pw');
+        expect(env.some((e) => e.startsWith('MYSQL_USER='))).toBe(false);
+        expect(env.some((e) => e.startsWith('MYSQL_PASSWORD='))).toBe(false);
+      });
+
+      it('still creates a regular user alongside the root password', () => {
+        const env = envFor({ user: 'app', password: 'pw' });
+        expect(env).toEqual(expect.arrayContaining(['MYSQL_ROOT_PASSWORD=pw', 'MYSQL_USER=app', 'MYSQL_PASSWORD=pw']));
+      });
+    });
+
     it('throws when templates dir has no docker-compose.hbs', () => {
       const fs = require('fs');
       const os = require('os');

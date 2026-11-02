@@ -104,8 +104,11 @@ function databaseToComposeService(
   } else if (db.type === 'mysql' || db.type === 'mariadb') {
     if (db.password) env.MYSQL_ROOT_PASSWORD = db.password;
     if (db.database) env.MYSQL_DATABASE = db.database;
-    if (db.user) env.MYSQL_USER = db.user;
-    if (db.password && db.user) env.MYSQL_PASSWORD = db.password;
+    // The official image refuses MYSQL_USER=root ("cannot be used for the root user"):
+    // root is configured through MYSQL_ROOT_PASSWORD alone.
+    const regularUser = db.user && db.user.toLowerCase() !== 'root' ? db.user : undefined;
+    if (regularUser) env.MYSQL_USER = regularUser;
+    if (db.password && regularUser) env.MYSQL_PASSWORD = db.password;
   } else if (db.type === 'mongodb') {
     if (db.user) env.MONGO_INITDB_ROOT_USERNAME = db.user;
     if (db.password) env.MONGO_INITDB_ROOT_PASSWORD = db.password;
