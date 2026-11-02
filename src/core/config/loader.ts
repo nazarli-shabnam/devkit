@@ -124,10 +124,18 @@ export async function loadConfig(projectRoot: string = process.cwd()): Promise<D
  * Load config, or (when missing) offer to run `envkit init` in interactive terminals.
  *
  * - If `.dev-env.yml` exists: behaves like `loadConfig`.
- * - If missing and not a TTY: throws with a message suggesting `envkit init`.
+ * - If missing and not a TTY (or `offerInit: false`): throws with a message suggesting `envkit init`.
  * - If missing and TTY: prompts the user to run init now; on yes, runs init then loads.
  */
-export async function loadConfigOrPromptInit(projectRoot: string = process.cwd()): Promise<DevEnvConfig> {
+export interface LoadOrInitOptions {
+  /** Offer to run `envkit init` when there is no config (default: true). Dry runs turn this off: they must not write files. */
+  offerInit?: boolean;
+}
+
+export async function loadConfigOrPromptInit(
+  projectRoot: string = process.cwd(),
+  options: LoadOrInitOptions = {}
+): Promise<DevEnvConfig> {
   const configPath = path.join(projectRoot, '.dev-env.yml');
   const exists = await fileExists(configPath);
   if (exists) return loadConfig(projectRoot);
@@ -136,7 +144,7 @@ export async function loadConfigOrPromptInit(projectRoot: string = process.cwd()
     `Configuration file not found: ${configPath}\n` +
     `Run \`envkit init\` to create one, or create a .dev-env.yml file in your project root.`;
 
-  if (!process.stdout.isTTY) {
+  if (options.offerInit === false || !process.stdout.isTTY) {
     throw new Error(baseMsg);
   }
 
