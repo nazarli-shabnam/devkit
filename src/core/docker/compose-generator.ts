@@ -81,6 +81,15 @@ function buildHealthcheckForService(
   return renderHealthcheckFragment(test, matched);
 }
 
+/**
+ * Compose service names must match `[a-zA-Z0-9][a-zA-Z0-9_.-]*`. Anything else
+ * (slashes from namespaced images, spaces, ...) becomes `_`.
+ */
+export function toServiceName(raw: string): string {
+  const cleaned = raw.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^[^a-zA-Z0-9]+/, '');
+  return cleaned || 'service';
+}
+
 function databaseToComposeService(
   db: Database,
   index: number,
@@ -92,7 +101,10 @@ function databaseToComposeService(
   const DB_DEFAULT_PORTS: Record<string, number> = {
     postgresql: 5432, mysql: 3306, mariadb: 3306, mongodb: 27017, redis: 6379,
   };
-  const name = db.name ?? `${db.type}_${index + 1}`.replace(/-/g, '_');
+  const name = toServiceName(db.name ?? `${db.type}_${index + 1}`.replace(/-/g, '_'));
+  if (db.name && name !== db.name) {
+    logger.warn(`Database name "${db.name}" is not a valid Compose service name; using "${name}".`);
+  }
   const port = db.port ?? DB_DEFAULT_PORTS[db.type] ?? 5432;
   const ports = [`${port}:${port}`];
 
@@ -112,7 +124,7 @@ function databaseToComposeService(
     if (db.database) env.MONGO_INITDB_DATABASE = db.database;
   }
 
-  const healthcheck = buildHealthcheckForService(name, db.type, healthChecks, true);
+  const healthcheck = buildHealthcheckForService(db.name ?? name, db.type, healthChecks, true);
 
   return {
     name,
@@ -129,7 +141,7 @@ function serviceToComposeService(
   index: number,
   healthChecks: HealthCheck[] | undefined
 ): ComposeService {
-  const name = `${svc.type}_${index + 1}`.replace(/-/g, '_');
+  const name = toServiceName(`${svc.type}_${index + 1}`.replace(/-/g, '_'));
   const ports: string[] = [];
   if (svc.port) ports.push(`${svc.port}:${svc.port}`);
   if (svc.management_port) ports.push(`${svc.management_port}:${svc.management_port}`);
