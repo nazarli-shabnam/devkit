@@ -218,6 +218,9 @@ export function generateComposeContent(config: DevEnvConfig, templatesDir: strin
       if (!svc.dataDir) continue;
       const volume = `${svc.name}_data`;
       svc.volumes = [`${volume}:${svc.dataDir}`];
+      // postgres:18+ moved its default data dir and refuses a mount at the old path unless
+      // PGDATA points there, so pin it (valid for every version).
+      if (svc.image === 'postgres') svc.env.PGDATA = svc.dataDir;
       volumeNames.push(volume);
     }
   }

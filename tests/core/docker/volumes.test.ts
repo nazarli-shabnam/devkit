@@ -25,6 +25,13 @@ describe('database data volumes', () => {
     expect(doc.services.redis_5.volumes).toEqual(['redis_5_data:/data']);
   });
 
+  it('pins PGDATA to the mounted path for postgres (postgres 18+ default moved) and only then', () => {
+    const on = render({ databases: [{ type: 'postgresql', host: 'localhost' }] });
+    expect(on.services.postgresql_1.environment).toContain('PGDATA=/var/lib/postgresql/data');
+    const off = render({ databases: [{ type: 'postgresql', host: 'localhost' }], docker: { persist_data: false } });
+    expect(off.services.postgresql_1.environment).toBeUndefined();
+  });
+
   it('declares every named volume at the top level', () => {
     const doc = render({ databases });
     expect(Object.keys(doc.volumes).sort()).toEqual(
