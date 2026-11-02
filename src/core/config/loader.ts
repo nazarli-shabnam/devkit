@@ -75,6 +75,15 @@ export function findUnresolvedVars(rawConfig: any): string[] {
   return [...unresolved];
 }
 
+/**
+ * Read .dev-env.yml exactly as written (no ${VAR} resolution, no schema defaults).
+ * Used to tell secrets that come from ${VAR} apart from literals typed into the file.
+ */
+export async function loadRawConfig(projectRoot: string = process.cwd()): Promise<unknown> {
+  const content = await readFile(path.join(projectRoot, '.dev-env.yml'));
+  return yaml.load(content, { schema: yaml.DEFAULT_SCHEMA });
+}
+
 export async function loadConfig(projectRoot: string = process.cwd()): Promise<DevEnvConfig> {
   const configPath = path.join(projectRoot, '.dev-env.yml');
   

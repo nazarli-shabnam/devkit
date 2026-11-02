@@ -41,8 +41,11 @@ function isSecretEnvKey(key: string): boolean {
 /**
  * Check for common configuration issues. Each issue is logged as a warning and
  * also returned, so callers (e.g. `validate --strict`) can act on them.
+ *
+ * `config` is the resolved config; pass `rawConfig` (the file as written) so secrets
+ * supplied through ${VAR} are not reported as hardcoded.
  */
-export function checkConfigWarnings(config: DevEnvConfig): string[] {
+export function checkConfigWarnings(config: DevEnvConfig, rawConfig?: DevEnvConfig): string[] {
   const warnings: string[] = [];
   const warn = (msg: string): void => {
     warnings.push(msg);
@@ -53,8 +56,11 @@ export function checkConfigWarnings(config: DevEnvConfig): string[] {
   // Only inspect real secret fields so keys like `password_reset_url` don't false-positive:
   //   - database passwords
   //   - env values whose KEY looks secret-bearing (password/secret/token/key/auth)
-  const hardcodedDbPassword = config.databases?.some((db) => isLiteralSecret(db.password));
-  const hardcodedEnvSecret = Object.entries(config.env ?? {}).some(
+  // Inspect the config as written (rawConfig) when available: after ${VAR} resolution a
+  // correctly externalized secret is indistinguishable from a hardcoded one.
+  const secretSource = rawConfig ?? config;
+  const hardcodedDbPassword = secretSource.databases?.some((db) => isLiteralSecret(db.password));
+  const hardcodedEnvSecret = Object.entries(secretSource.env ?? {}).some(
     ([key, value]) => isSecretEnvKey(key) && isLiteralSecret(value)
   );
   if (hardcodedDbPassword || hardcodedEnvSecret) {

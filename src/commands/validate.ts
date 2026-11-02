@@ -39,8 +39,9 @@ export async function runValidate(options: ValidateOptions = {}): Promise<void> 
   // in aggregate below, so silence its per-occurrence warnings during this call.
   const prevLevel = logger.getLevel();
   logger.setLevel(LogLevel.ERROR);
+  let config: DevEnvConfig;
   try {
-    await loadConfig(projectRoot);
+    config = await loadConfig(projectRoot);
   } finally {
     logger.setLevel(prevLevel);
   }
@@ -53,9 +54,9 @@ export async function runValidate(options: ValidateOptions = {}): Promise<void> 
   }
 
   // Surface non-fatal config warnings (hardcoded secrets, port conflicts, ...).
-  // Check the RAW config so correctly-externalized secrets (still `${VAR}` here)
-  // are not mistaken for hardcoded ones after resolution.
-  const warnings = checkConfigWarnings((raw ?? {}) as DevEnvConfig);
+  // Same call as `setup`/`generate`: the raw config tells externalized secrets (still `${VAR}`)
+  // apart from hardcoded ones; everything else is checked on the resolved config.
+  const warnings = checkConfigWarnings(config, (raw ?? {}) as DevEnvConfig);
 
   if (options.strict && (unresolved.length > 0 || warnings.length > 0)) {
     throw new Error(
