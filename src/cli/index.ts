@@ -153,7 +153,7 @@ snapshotCommand
 program
   .command('generate')
   .description('Generate docker-compose.yml from configuration')
-  .option('-o, --output <file>', 'Output file path', 'docker-compose.yml')
+  .option('-o, --output <file>', 'Output file path (default: docker-compose.yml in the project root)')
   .option('--dry-run', 'Print the generated compose to stdout without writing a file')
   .action(async (options) => {
     try {
@@ -171,7 +171,7 @@ const shareCommand = program
 shareCommand
   .command('export')
   .description('Export sanitized configuration for sharing (no secrets)')
-  .option('-o, --output <file>', 'Output file path', 'dev-env.shared.yml')
+  .option('-o, --output <file>', 'Output file path (default: dev-env.shared.yml in the project root)')
   .action(async (options) => {
     try {
       await runShareExport({ output: options.output });
@@ -185,7 +185,7 @@ shareCommand
   .command('import')
   .description('Import shared configuration into project')
   .argument('<file>', 'Configuration file to import')
-  .option('-o, --output <file>', 'Output file path', '.dev-env.yml')
+  .option('-o, --output <file>', 'Output file path (default: .dev-env.yml in the project root)')
   .option('--validate-only', 'Validate the file without writing it')
   .action(async (file, options) => {
     try {

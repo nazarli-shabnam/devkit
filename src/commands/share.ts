@@ -1,10 +1,9 @@
-import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
 import { DevEnvConfig, DevEnvConfigSchema } from '../types/config';
 import { fileExists, readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
-import { assertRelativeOutputInside } from '../utils/paths';
+import { displayPath, resolveOutputPath } from '../utils/paths';
 
 
 export function sanitizeConfigForShare(config: DevEnvConfig): DevEnvConfig {
@@ -67,13 +66,10 @@ export async function runShareExport(options: ShareExportOptions = {}): Promise<
   DevEnvConfigSchema.parse(sanitized);
   const yamlContent = yaml.dump(sanitized, { lineWidth: -1 });
 
-  const outputFile = (options.output?.trim() || 'dev-env.shared.yml');
-  const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);
-
-  assertRelativeOutputInside(outputFile, process.cwd());
+  const outPath = resolveOutputPath(options.output, 'dev-env.shared.yml', projectRoot);
 
   await writeFile(outPath, yamlContent);
-  logger.success(`Exported sanitized config to ${outputFile}`);
+  logger.success(`Exported sanitized config to ${displayPath(outPath)}`);
 }
 
 export interface ShareImportOptions {
@@ -108,12 +104,9 @@ export async function runShareImport(filePath: string, options: ShareImportOptio
     return;
   }
 
-  const outputFile = (options.output?.trim() || '.dev-env.yml');
-  const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);
-
-  assertRelativeOutputInside(outputFile, process.cwd());
+  const outPath = resolveOutputPath(options.output, '.dev-env.yml', await findProjectRoot(process.cwd()));
 
   const yamlContent = yaml.dump(parsed.data, { lineWidth: -1 });
   await writeFile(outPath, yamlContent);
-  logger.success(`Imported config to ${outputFile}`);
+  logger.success(`Imported config to ${displayPath(outPath)}`);
 }

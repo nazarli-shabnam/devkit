@@ -11,6 +11,29 @@ export function isInsideDir(target: string, baseDir: string): boolean {
 }
 
 /**
+ * Where an output file goes. With no explicit `--output` it is `defaultName` in the project root
+ * (so running from a subfolder does not scatter files or create a nested config). An explicit
+ * relative path is relative to the current directory, as with any CLI, and must stay inside it;
+ * an absolute path is used as given.
+ */
+export function resolveOutputPath(
+  output: string | undefined,
+  defaultName: string,
+  projectRoot: string,
+  cwd: string = process.cwd()
+): string {
+  const explicit = output?.trim();
+  if (!explicit) return path.join(projectRoot, defaultName);
+  assertRelativeOutputInside(explicit, cwd);
+  return path.resolve(cwd, explicit);
+}
+
+/** A path for messages: relative to `cwd` when it is inside it, absolute otherwise. */
+export function displayPath(target: string, cwd: string = process.cwd()): string {
+  return isInsideDir(target, cwd) ? path.relative(cwd, target) || '.' : target;
+}
+
+/**
  * Throw unless a relative output path stays inside `baseDir`. Absolute paths are an explicit
  * choice by the user and are allowed.
  */

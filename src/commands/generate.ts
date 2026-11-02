@@ -4,7 +4,7 @@ import { checkConfigWarnings } from '../core/config/validator';
 import { generateComposeContent } from '../core/docker/compose-generator';
 import { logger } from '../utils/logger';
 import { writeFile } from '../utils/file-ops';
-import { assertRelativeOutputInside } from '../utils/paths';
+import { displayPath, resolveOutputPath } from '../utils/paths';
 
 export interface GenerateOptions {
   output?: string;
@@ -16,8 +16,6 @@ function getTemplatesDir(): string {
 }
 
 export async function runGenerate(options: GenerateOptions = {}): Promise<void> {
-  const outputFile = (options.output?.trim() || 'docker-compose.yml');
-
   const projectRoot = await findProjectRoot(process.cwd());
   logger.debug(`Project root: ${projectRoot}`);
 
@@ -29,7 +27,7 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
     return;
   }
 
-  assertRelativeOutputInside(outputFile, process.cwd());
+  const outPath = resolveOutputPath(options.output, 'docker-compose.yml', projectRoot);
 
   const templatesDir = getTemplatesDir();
   const content = generateComposeContent(config, templatesDir);
@@ -40,8 +38,6 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
     return;
   }
 
-  const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);
-
   await writeFile(outPath, content);
-  logger.success(`Wrote ${outputFile}`);
+  logger.success(`Wrote ${displayPath(outPath)}`);
 }
