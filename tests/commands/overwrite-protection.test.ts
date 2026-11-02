@@ -110,6 +110,26 @@ describe('overwrite protection', () => {
       expect(saved).toContain('name: original');
     });
 
+    it('two forced imports in the same second keep both backups (the first holds the real original)', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2030-01-01T00:00:00Z'));
+      try {
+        await runShareImport('incoming.yml', { force: true });
+        await fs.writeFile(path.join(root, 'incoming.yml'), 'name: second\n');
+        await runShareImport('incoming.yml', { force: true });
+      } finally {
+        jest.useRealTimers();
+      }
+      const names = (await listSnapshots(root)).map((s) => s.name).sort();
+      expect(names).toEqual(['pre-import-2030-01-01T00-00-00', 'pre-import-2030-01-01T00-00-00-2']);
+      const first = await fs.readFile(path.join(root, '.devkit', 'snapshots', names[0], 'dev-env.yml'), 'utf-8');
+      expect(first).toContain('name: original');
+    });
+
+    it('backs up when the target is given as an absolute path to the project config', async () => {
+      await runShareImport('incoming.yml', { force: true, output: path.join(root, '.dev-env.yml') });
+      expect(await listSnapshots(root)).toHaveLength(1);
+    });
+
     it('a declined prompt leaves the config and creates no snapshot', async () => {
       interactive(true);
       prompts.inject([false]);

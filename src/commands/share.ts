@@ -6,7 +6,7 @@ import { fileExists, readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
 import { displayPath, resolveOutputPath } from '../utils/paths';
 import { confirmOverwrite, generatedHeader } from '../utils/overwrite';
-import { createSnapshot } from '../core/snapshot/storage';
+import { createSnapshot, uniqueSnapshotName } from '../core/snapshot/storage';
 
 
 export function sanitizeConfigForShare(config: DevEnvConfig): DevEnvConfig {
@@ -123,9 +123,14 @@ export async function runShareImport(filePath: string, options: ShareImportOptio
     return;
   }
   // Importing replaces the project config; keep what was there recoverable via `snapshot restore`.
-  if (path.resolve(outPath) === path.join(projectRoot, '.dev-env.yml') && (await fileExists(outPath))) {
+  // (path.relative compares like the filesystem does, e.g. case-insensitively on Windows)
+  if (path.relative(path.join(projectRoot, '.dev-env.yml'), outPath) === '' && (await fileExists(outPath))) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const backup = await createSnapshot(projectRoot, `pre-import-${stamp}`, await readFile(outPath));
+    const backup = await createSnapshot(
+      projectRoot,
+      await uniqueSnapshotName(projectRoot, `pre-import-${stamp}`),
+      await readFile(outPath)
+    );
     logger.info(`Backed up current config to snapshot "${backup.name}".`);
   }
 
