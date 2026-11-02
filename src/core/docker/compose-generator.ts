@@ -12,6 +12,10 @@ export interface ComposeService {
   env: Record<string, string>;
   /** Pre-rendered YAML fragment for healthcheck (indented), or undefined to omit */
   healthcheck?: string;
+  /** Container data directory to persist in a named volume (databases only) */
+  dataDir?: string;
+  /** `volume:path` mounts, set at render time */
+  volumes?: string[];
 }
 
 const DB_IMAGES: Record<string, string> = {
@@ -21,6 +25,15 @@ const DB_IMAGES: Record<string, string> = {
   mongodb: 'mongo',
   redis: 'redis',
   sqlite: '',
+};
+
+/** Where each database image keeps its data. */
+const DB_DATA_DIRS: Record<string, string> = {
+  postgresql: '/var/lib/postgresql/data',
+  mysql: '/var/lib/mysql',
+  mariadb: '/var/lib/mysql',
+  mongodb: '/data/db',
+  redis: '/data',
 };
 
 const DB_HEALTHCHECK_TESTS: Record<string, string[]> = {
@@ -121,6 +134,7 @@ function databaseToComposeService(
     ports,
     env,
     healthcheck,
+    dataDir: DB_DATA_DIRS[db.type],
   };
 }
 
@@ -197,9 +211,20 @@ export function generateComposeContent(config: DevEnvConfig, templatesDir: strin
     services.push(s);
   });
 
+  // Named volumes keep database data across `docker compose down`/`up` (opt out: docker.persist_data: false).
+  const volumeNames: string[] = [];
+  if (config.docker?.persist_data !== false) {
+    for (const svc of services) {
+      if (!svc.dataDir) continue;
+      const volume = `${svc.name}_data`;
+      svc.volumes = [`${volume}:${svc.dataDir}`];
+      volumeNames.push(volume);
+    }
+  }
+
   const networkName = config.docker?.network_name ?? 'dev-network';
 
   const template = loadComposeTemplate(templatesDir);
   const compiled = Handlebars.compile(template);
-  return compiled({ services, networkName });
+  return compiled({ services, networkName, volumeNames });
 }

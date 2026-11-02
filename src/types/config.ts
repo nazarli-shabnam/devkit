@@ -66,6 +66,8 @@ export const DockerConfigSchema = z.object({
   enabled: z.boolean().optional().default(true),
   output_file: z.string().optional().default('docker-compose.yml'),
   network_name: z.string().optional().default('dev-network'),
+  /** Mount a named volume for each database's data directory so data survives `docker compose down`. */
+  persist_data: z.boolean().optional().default(true),
 });
 
 export type DockerConfig = z.infer<typeof DockerConfigSchema>;
