@@ -1,5 +1,6 @@
 import prompts from 'prompts';
 import { isInteractive } from '../commands/init';
+import { exitOnCancel } from './prompt';
 import { fileExists, readFile } from './file-ops';
 
 /** Text envkit puts in the first lines of files it generates, so it can recognise them later. */
@@ -41,7 +42,7 @@ export async function confirmOverwrite(target: string, options: OverwriteOptions
 
   const answer = await prompts(
     { type: 'confirm', name: 'value', message: `${options.displayName} already exists. Overwrite it?`, initial: false },
-    { onCancel: () => false }
+    { onCancel: exitOnCancel }
   );
   return answer.value === true;
 }

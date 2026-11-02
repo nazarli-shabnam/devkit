@@ -6,7 +6,7 @@ import * as init from '../../src/commands/init';
 import { runGenerate } from '../../src/commands/generate';
 import { runShareExport, runShareImport } from '../../src/commands/share';
 import { listSnapshots } from '../../src/core/snapshot/storage';
-import { GENERATED_MARKER } from '../../src/utils/overwrite';
+import { GENERATED_MARKER, confirmOverwrite } from '../../src/utils/overwrite';
 import { logger } from '../../src/utils/logger';
 
 describe('overwrite protection', () => {
@@ -143,5 +143,27 @@ describe('overwrite protection', () => {
       expect(await read('fresh.yml')).toContain('name: imported');
       expect(await listSnapshots(root)).toHaveLength(0);
     });
+  });
+});
+
+describe('aborting the overwrite prompt (Ctrl+C) is not success', () => {
+  it('exits 130 and leaves the file alone', async () => {
+    const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'devkit-overwrite-cancel-')));
+    const target = path.join(root, 'existing.yml');
+    await fs.writeFile(target, 'mine\n');
+    jest.spyOn(init, 'isInteractive').mockReturnValue(true);
+    jest.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exit = jest.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code}`);
+    }) as never);
+    prompts.inject([new Error('aborted')]); // an injected Error simulates Ctrl+C
+    try {
+      await expect(confirmOverwrite(target, { displayName: 'existing.yml' })).rejects.toThrow('exit:130');
+      expect(exit).not.toHaveBeenCalledWith(0);
+      expect(await fs.readFile(target, 'utf-8')).toBe('mine\n');
+    } finally {
+      jest.restoreAllMocks();
+      await fs.remove(root).catch(() => {});
+    }
   });
 });
