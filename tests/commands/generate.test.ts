@@ -54,7 +54,7 @@ describe('generate command', () => {
     const outPath = path.join(tempDir, 'docker-compose.yml');
     expect(await fs.pathExists(outPath)).toBe(true);
     const content = await fs.readFile(outPath, 'utf-8');
-    expect(content).toContain('version:');
+    expect(content).not.toMatch(/^version:/m);
     expect(content).toContain('services:');
     expect(content).toContain('postgres');
     expect(content).toContain('redis');
