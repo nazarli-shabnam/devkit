@@ -2,12 +2,12 @@ version: "3.8"
 
 services:
 {{#each services}}
-  {{name}}:
-    image: {{image}}{{#if version}}:{{version}}{{/if}}
+  {{{yq name}}}:
+    image: {{{yq imageRef}}}
     {{#if ports}}
     ports:
       {{#each ports}}
-      - "{{this}}"
+      - {{{yq this}}}
       {{/each}}
     {{/if}}
     {{#if envLines}}
@@ -21,9 +21,9 @@ services:
 {{{healthcheck}}}
     {{/if}}
     networks:
-      - {{../networkName}}
+      - {{{yq ../networkName}}}
 {{/each}}
 
 networks:
-  {{networkName}}:
-    name: {{networkName}}
+  {{{yq networkName}}}:
+    name: {{{yq networkName}}}

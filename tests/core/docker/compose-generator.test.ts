@@ -102,7 +102,7 @@ describe('compose-generator', () => {
         docker: {},
       } as DevEnvConfig;
       const content = generateComposeContent(config, templatesDir);
-      expect(content).toContain('redis_1:');
+      expect(Object.keys(require('js-yaml').load(content).services)).toContain('redis_1');
       expect(content).not.toContain('healthcheck:');
     });
 
@@ -161,8 +161,8 @@ describe('compose-generator', () => {
       } as DevEnvConfig;
       const content = generateComposeContent(config, templatesDir);
       // First one keeps name "db", second should get "db_2"
-      expect(content).toContain('db:');
-      expect(content).toContain('db_2:');
+      const names = Object.keys(require('js-yaml').load(content).services);
+      expect(names).toEqual(expect.arrayContaining(['db', 'db_2']));
     });
 
     describe('environment value rendering', () => {
@@ -196,9 +196,26 @@ describe('compose-generator', () => {
           { name: 'app', services: [{ type: 'redis', version: '7&x', host: 'localhost' }] } as DevEnvConfig,
           templatesDir
         );
-        expect(content).toContain('image: redis:7&x');
+        expect(yaml.load(content).services.redis_1.image).toBe('redis:7&x');
         expect(content).not.toContain('&amp;');
       });
+    });
+
+    it('quotes free-form name/version/network so values cannot break YAML or inject keys', () => {
+      const yaml = require('js-yaml');
+      const content = generateComposeContent(
+        {
+          name: 'app',
+          services: [{ type: 'redis', version: '7\n    privileged: true #x', host: 'localhost' }],
+          docker: { network_name: 'n: x' },
+        } as DevEnvConfig,
+        templatesDir
+      );
+      const doc = yaml.load(content);
+      expect(doc.services.redis_1.image).toBe('redis:7\n    privileged: true #x');
+      expect(doc.services.redis_1.privileged).toBeUndefined();
+      expect(doc.services.redis_1.networks).toEqual(['n: x']);
+      expect(Object.keys(doc.networks)).toEqual(['n: x']);
     });
 
     it('throws when templates dir has no docker-compose.hbs', () => {
