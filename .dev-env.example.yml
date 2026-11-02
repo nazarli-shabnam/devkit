@@ -77,3 +77,4 @@ docker:
   enabled: true
   output_file: docker-compose.yml
   network_name: dev-network
+  persist_data: true   # named volume per database so data survives `docker compose down`

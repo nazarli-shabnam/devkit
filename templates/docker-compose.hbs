@@ -14,6 +14,12 @@ services:
       - {{@key}}={{this}}
       {{/each}}
     {{/if}}
+    {{#if volumes}}
+    volumes:
+      {{#each volumes}}
+      - {{this}}
+      {{/each}}
+    {{/if}}
     {{#if healthcheck}}
     healthcheck:
 {{{healthcheck}}}
@@ -22,6 +28,13 @@ services:
       - {{../networkName}}
 {{/each}}
 
+{{#if volumeNames}}
+volumes:
+{{#each volumeNames}}
+  {{this}}:
+{{/each}}
+
+{{/if}}
 networks:
   {{networkName}}:
     name: {{networkName}}
