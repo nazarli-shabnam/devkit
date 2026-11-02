@@ -49,14 +49,16 @@ export function resolveEnvVars(
 
 /**
  * The string values of the config's own `env:` block. ${VAR} references elsewhere in the
- * file (including inside other env values) may point at these.
+ * file (including inside other env values) may point at these. An entry that refers to its own
+ * name (`TOKEN: ${TOKEN}`, `PATH: ${PATH}:/extra`) is a pass-through from the ambient
+ * environment, so it is left out and resolves from `.env`/the shell as it always did.
  */
 function extractLocalEnv(rawConfig: unknown): Record<string, string> {
   const localEnv: Record<string, string> = {};
   const envBlock = (rawConfig as { env?: unknown } | null | undefined)?.env;
   if (envBlock && typeof envBlock === 'object') {
     for (const [k, v] of Object.entries(envBlock)) {
-      if (typeof v === 'string') localEnv[k] = v;
+      if (typeof v === 'string' && !v.includes('${' + k + '}')) localEnv[k] = v;
     }
   }
   return localEnv;

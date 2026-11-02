@@ -47,7 +47,7 @@ describe('${VAR} references to the config env: block', () => {
     expect(findUnresolvedVars(yaml.load(config))).toEqual([]);
   });
 
-  it('validate --strict passes and the resolved value matches', async () => {
+  it('validate --strict passes for the same config', async () => {
     process.chdir(tempDir);
     await expect(runValidate({ strict: true })).resolves.toBeUndefined();
   });
@@ -57,5 +57,27 @@ describe('${VAR} references to the config env: block', () => {
     const loaded = await loadConfig(tempDir);
     expect(loaded.env.URL).toBe('http://${NOPE_X}/');
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('NOPE_X'));
+  });
+
+  describe('pass-through entries that name themselves', () => {
+    afterEach(() => {
+      delete process.env.ENVBLK_TOKEN;
+      delete process.env.ENVBLK_PATH;
+    });
+
+    it('still reads ${X} from the ambient environment when the block says X: ${X}', async () => {
+      process.env.ENVBLK_TOKEN = 'from-dotenv';
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), ['name: x', 'env:', '  ENVBLK_TOKEN: ${ENVBLK_TOKEN}', ''].join('\n'));
+      const loaded = await loadConfig(tempDir);
+      expect(loaded.env.ENVBLK_TOKEN).toBe('from-dotenv');
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('appends to the ambient value instead of repeating the suffix', async () => {
+      process.env.ENVBLK_PATH = '/usr/bin';
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), ['name: x', 'env:', '  ENVBLK_PATH: ${ENVBLK_PATH}:/extra', ''].join('\n'));
+      const loaded = await loadConfig(tempDir);
+      expect(loaded.env.ENVBLK_PATH).toBe('/usr/bin:/extra');
+    });
   });
 });
