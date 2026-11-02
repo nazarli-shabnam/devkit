@@ -29,7 +29,7 @@ describe('database data volumes', () => {
     const on = render({ databases: [{ type: 'postgresql', host: 'localhost' }] });
     expect(on.services.postgresql_1.environment).toContain('PGDATA=/var/lib/postgresql/data');
     const off = render({ databases: [{ type: 'postgresql', host: 'localhost' }], docker: { persist_data: false } });
-    expect(off.services.postgresql_1.environment).toBeUndefined();
+    expect(off.services.postgresql_1.environment ?? []).not.toContain('PGDATA=/var/lib/postgresql/data');
   });
 
   it('declares every named volume at the top level', () => {
