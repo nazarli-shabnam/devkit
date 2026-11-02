@@ -60,19 +60,38 @@ export function sanitizeConfigForShare(config: DevEnvConfig): DevEnvConfig {
   return out;
 }
 
+/**
+ * Walk the validated (resolved) config; wherever the file as written held a `${...}` reference,
+ * use the written text instead of the resolved value. The result has the resolved config's shape
+ * (known keys only), so nothing the schema stripped can leak through.
+ */
+export function restoreReferences(resolved: unknown, raw: unknown): unknown {
+  if (Array.isArray(resolved)) {
+    const rawItems = Array.isArray(raw) ? raw : [];
+    return resolved.map((item, i) => restoreReferences(item, rawItems[i]));
+  }
+  if (resolved !== null && typeof resolved === 'object') {
+    const rawObject = raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+    return Object.fromEntries(
+      Object.entries(resolved as Record<string, unknown>).map(([key, value]) => [key, restoreReferences(value, rawObject[key])])
+    );
+  }
+  return typeof raw === 'string' && raw.includes('${') ? raw : resolved;
+}
+
 export interface ShareExportOptions {
   output?: string;
 }
 
 export async function runShareExport(options: ShareExportOptions = {}): Promise<void> {
   const projectRoot = await findProjectRoot(process.cwd());
-  // Loading validates the config (and offers `init` when it is missing)...
-  await loadConfigOrPromptInit(projectRoot);
-  // ...but the export is built from the file as written: ${VAR} references stay references, so a
-  // secret used anywhere (commands, health checks, hosts, ...) is never baked in as its value.
-  const raw = (await loadRawConfig(projectRoot)) as DevEnvConfig;
+  // The validated config decides which keys exist (unknown keys are dropped by the schema)...
+  const config = await loadConfigOrPromptInit(projectRoot);
+  // ...but string values go back to what the file says, so a ${VAR} reference stays a reference
+  // and a secret used anywhere (commands, health checks, hosts, ...) is never baked in as its value.
+  const withReferences = restoreReferences(config, await loadRawConfig(projectRoot)) as DevEnvConfig;
 
-  const sanitized = sanitizeConfigForShare(raw);
+  const sanitized = sanitizeConfigForShare(withReferences);
   const yamlContent = yaml.dump(sanitized, { lineWidth: -1 });
 
   const outputFile = (options.output?.trim() || 'dev-env.shared.yml');

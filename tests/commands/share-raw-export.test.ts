@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs-extra';
 import * as yaml from 'js-yaml';
-import { runShareExport } from '../../src/commands/share';
+import { runShareExport, restoreReferences } from '../../src/commands/share';
 import { logger } from '../../src/utils/logger';
 
 describe('share export keeps ${VAR} references instead of resolved secrets', () => {
@@ -85,5 +85,28 @@ describe('share export keeps ${VAR} references instead of resolved secrets', () 
     expect(text).toContain('${DB_USER}');
     expect(text).toContain('${DB_PASSWORD}');
     expect(text).toContain('API_KEY: ${API_KEY}');
+  });
+
+  it('does not export unknown or misspelled keys (they could hold secrets)', async () => {
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      ['name: t', 'databases:', '  - type: redis', '    pasword: hunter2', 'secrets_here: topsecret', ''].join('\n')
+    );
+    await runShareExport({ output: 'out.yml' });
+    const text = await fs.readFile(path.join(tempDir, 'out.yml'), 'utf-8');
+    expect(text).not.toMatch(/hunter2|topsecret|pasword|secrets_here/);
+  });
+
+  describe('restoreReferences', () => {
+    it('keeps the resolved shape and only swaps in written ${} references', () => {
+      const resolved = { a: 'resolved', b: ['x', { c: 'y' }], d: 5, e: 'plain' };
+      const raw = { a: 'use ${A}', b: ['x', { c: '${C}', extra: 'dropped' }], d: '${D}', e: 'plain', ignored: 1 };
+      expect(restoreReferences(resolved, raw)).toEqual({ a: 'use ${A}', b: ['x', { c: '${C}' }], d: '${D}', e: 'plain' });
+    });
+
+    it('tolerates missing or mismatched raw values', () => {
+      expect(restoreReferences({ a: [1, 2], b: { c: 'v' } }, { a: 'nope', b: [] })).toEqual({ a: [1, 2], b: { c: 'v' } });
+      expect(restoreReferences('v', undefined)).toBe('v');
+    });
   });
 });
