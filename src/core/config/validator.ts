@@ -33,7 +33,7 @@ const SECRET_KEY_WORDS = ['password', 'secret', 'token', 'key', 'pass', 'auth', 
 // True only when the env key clearly NAMES a secret, judged by its last
 // underscore/hyphen segment — so DB_PASSWORD / API_KEY match, but benign keys
 // like PASSWORD_RESET_URL (ends in "url") do not.
-function isSecretEnvKey(key: string): boolean {
+export function isSecretEnvKey(key: string): boolean {
   const last = key.split(/[_-]/).pop()?.toLowerCase() ?? '';
   return SECRET_KEY_WORDS.includes(last);
 }
