@@ -67,7 +67,9 @@ function buildHealthcheckForService(
   );
 
   if (matched?.test) {
-    return renderHealthcheckFragment(['CMD-SHELL', matched.test], matched);
+    // Compose interpolates `${...}` in the file on the host; `$$` makes the container's own
+    // shell see a literal `$` (so `$${POSTGRES_USER}` in the config expands inside the container).
+    return renderHealthcheckFragment(['CMD-SHELL', matched.test.replace(/\$/g, '$$$$')], matched);
   }
 
   if (matched && DB_HEALTHCHECK_TESTS[matched.type]) {

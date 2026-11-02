@@ -25,7 +25,7 @@ const ENV_REFERENCE = /\$\$\{([^}]*)\}|\$\{([^}]+)\}/g;
 /**
  * Expand `${VAR}` references in a single pass.
  *
- * - `${VAR:-default}` uses `default` when VAR is unset or empty (default text may itself contain refs).
+ * - `${VAR:-default}` uses `default` when VAR is unset or empty (the default is literal text; nested `${...}` inside it is not supported).
  * - `$${VAR}` is an escape and yields the literal text `${VAR}`.
  * - Names defined in `env` (the config's own `env:` block) are expanded recursively, so they can
  *   reference each other. A reference to a name that is already being expanded (e.g.
@@ -59,7 +59,7 @@ export function resolveEnvVars(
       const resolved: string | undefined = defined ? expand(env[name], [...stack, name]) : process.env[name];
 
       if (resolved === undefined || (fallback !== undefined && resolved === '')) {
-        if (fallback !== undefined) return expand(fallback, stack);
+        if (fallback !== undefined) return fallback;
         reportUnset(name);
         return match;
       }
