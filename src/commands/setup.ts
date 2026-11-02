@@ -11,38 +11,25 @@ export interface SetupOptions {
   dryRun?: boolean;
 }
 
-function parseCommand(commandStr: string): { cmd: string; args: string[] } {
-  const trimmed = commandStr.trim();
-  if (!trimmed) {
+function assertCommand(command: string): void {
+  if (!command.trim()) {
     throw new Error('Empty command');
   }
+}
 
-  const parts: string[] = [];
-  let current = '';
-  let inSingle = false;
-  let inDouble = false;
-
-  for (let i = 0; i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (ch === "'" && !inDouble) {
-      inSingle = !inSingle;
-    } else if (ch === '"' && !inSingle) {
-      inDouble = !inDouble;
-    } else if (/\s/.test(ch) && !inSingle && !inDouble) {
-      if (current) {
-        parts.push(current);
-        current = '';
-      }
-    } else {
-      current += ch;
-    }
-  }
-  if (current) parts.push(current);
-
-  if (parts.length === 0) {
-    throw new Error('Empty command');
-  }
-  return { cmd: parts[0], args: parts.slice(1) };
+/**
+ * Run a configured command through the platform shell (`/bin/sh -c` on macOS/Linux, `cmd.exe`
+ * on Windows), so what users type in `.dev-env.yml` (`npm run a && npm run b`, env prefixes,
+ * quoting) behaves like it does in their terminal. The same file means the same thing everywhere
+ * except for the shell's own syntax.
+ */
+async function runCommand(command: string, cwd: string, env: Record<string, string>): Promise<void> {
+  await exec(command, [], {
+    cwd,
+    env: { ...process.env, ...env } as Record<string, string>,
+    shell: true,
+    silent: false,
+  });
 }
 
 async function runDependency(
@@ -52,7 +39,7 @@ async function runDependency(
   dryRun: boolean
 ): Promise<void> {
   const cwd = path.resolve(projectRoot, dep.path);
-  const { cmd, args } = parseCommand(dep.command);
+  assertCommand(dep.command);
 
   if (dryRun) {
     logger.info(`[dry-run] Would run in ${dep.path}: ${dep.command}`);
@@ -60,11 +47,7 @@ async function runDependency(
   }
 
   logger.step(`Installing dependencies (${dep.type}) in ${dep.path}...`);
-  await exec(cmd, args, {
-    cwd,
-    env: { ...process.env, ...env } as Record<string, string>,
-    silent: false,
-  });
+  await runCommand(dep.command, cwd, env);
 }
 
 export async function runSetup(options: SetupOptions = {}): Promise<void> {
@@ -95,29 +78,21 @@ export async function runSetup(options: SetupOptions = {}): Promise<void> {
       if (db.migrations?.length) {
         for (const mig of db.migrations) {
           const cwd = path.resolve(projectRoot, mig.path);
-          const { cmd, args } = parseCommand(mig.command);
+          assertCommand(mig.command);
           if (dryRun) {
             logger.info(`[dry-run] Would run migration in ${mig.path}: ${mig.command}`);
           } else {
             logger.step(`Running migration in ${mig.path}...`);
-            await exec(cmd, args, {
-              cwd,
-              env: { ...process.env, ...env } as Record<string, string>,
-              silent: false,
-            });
+            await runCommand(mig.command, cwd, env);
           }
         }
       }
       if (db.seed && !dryRun) {
         const seedPath = db.seed.path ?? '.';
         const cwd = path.resolve(projectRoot, seedPath);
-        const { cmd, args } = parseCommand(db.seed.command);
+        assertCommand(db.seed.command);
         logger.step(`Running seed (${db.type}) in ${seedPath}...`);
-        await exec(cmd, args, {
-          cwd,
-          env: { ...process.env, ...env } as Record<string, string>,
-          silent: false,
-        });
+        await runCommand(db.seed.command, cwd, env);
       } else if (db.seed && dryRun) {
         logger.info(`[dry-run] Would run seed in ${db.seed.path ?? '.'}: ${db.seed.command}`);
       }
