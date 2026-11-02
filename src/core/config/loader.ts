@@ -7,6 +7,7 @@ import { logger } from '../../utils/logger';
 import { DevEnvConfig, DevEnvConfigSchema } from '../../types/config';
 import { resolvePath } from '../../utils/platform';
 import { runInit } from '../../commands/init';
+import { findUnknownKeys, formatUnknownKey } from './unknown-keys';
 
 export async function loadEnvFile(projectRoot: string): Promise<void> {
   const envPath = path.join(projectRoot, '.env');
@@ -94,6 +95,10 @@ export async function loadConfig(projectRoot: string = process.cwd()): Promise<D
     const resolvedConfig = resolveEnvVarsInConfig(rawConfig);
 
     const config = DevEnvConfigSchema.parse(resolvedConfig);
+
+    for (const unknownKey of findUnknownKeys(rawConfig)) {
+      logger.warn(formatUnknownKey(unknownKey));
+    }
 
     logger.debug(`Loaded configuration from ${configPath}`);
     return config;
