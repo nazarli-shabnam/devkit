@@ -7,13 +7,13 @@ const templatesDir = path.resolve(__dirname, '../../../templates');
 
 describe('compose-generator', () => {
   describe('generateComposeContent', () => {
-    it('produces valid YAML with version and network when config has no databases or services', () => {
+    it('produces valid YAML (no obsolete version key) with network when config has no databases or services', () => {
       const config = {
         name: 'empty-app',
         docker: { network_name: 'my-network' },
       } as DevEnvConfig;
       const content = generateComposeContent(config, templatesDir);
-      expect(content).toContain('version:');
+      expect(content).not.toMatch(/^version:/m);
       expect(content).toContain('services:');
       expect(content).toContain('my-network');
       expect(content).toContain('networks:');
