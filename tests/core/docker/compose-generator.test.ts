@@ -165,6 +165,42 @@ describe('compose-generator', () => {
       expect(content).toContain('db_2:');
     });
 
+    describe('service name sanitization', () => {
+      const namesOf = (config: Record<string, unknown>): string[] =>
+        Object.keys(
+          require('js-yaml').load(generateComposeContent({ name: 'app', ...config } as DevEnvConfig, templatesDir)).services
+        );
+
+      it('turns namespaced image types into valid service names', () => {
+        expect(namesOf({ services: [{ type: 'bitnami/redis', port: 6379, host: 'localhost' }] })).toEqual(['bitnami_redis_1']);
+        expect(namesOf({ services: [{ type: 'mcr.microsoft.com/mssql/server', host: 'localhost' }] })).toEqual([
+          'mcr.microsoft.com_mssql_server_1',
+        ]);
+      });
+
+      it('sanitizes explicit database names and warns', () => {
+        const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+        expect(namesOf({ databases: [{ type: 'postgresql', name: 'my db!', host: 'localhost' }] })).toEqual(['my_db_']);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('my db!'));
+      });
+
+      it('keeps valid names untouched and still de-duplicates', () => {
+        expect(
+          namesOf({
+            databases: [
+              { type: 'postgresql', name: 'app-db', host: 'localhost' },
+              { type: 'postgresql', name: 'app-db', host: 'localhost' },
+            ],
+          })
+        ).toEqual(['app-db', 'app-db_2']);
+      });
+
+      it('never produces an empty or symbol-leading name', () => {
+        expect(namesOf({ databases: [{ type: 'redis', name: '***', host: 'localhost' }] })).toEqual(['service']);
+        expect(namesOf({ databases: [{ type: 'redis', name: '.hidden', host: 'localhost' }] })).toEqual(['hidden']);
+      });
+    });
+
     it('throws when templates dir has no docker-compose.hbs', () => {
       const fs = require('fs');
       const os = require('os');
