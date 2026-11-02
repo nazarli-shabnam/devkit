@@ -4,7 +4,7 @@ import { checkConfigWarnings } from '../core/config/validator';
 import { generateComposeContent } from '../core/docker/compose-generator';
 import { logger } from '../utils/logger';
 import { writeFile } from '../utils/file-ops';
-import { displayPath, resolveOutputPath } from '../utils/paths';
+import { displayPath, isInsideDir, resolveOutputPath } from '../utils/paths';
 import { confirmOverwrite, generatedHeader } from '../utils/overwrite';
 
 export interface GenerateOptions {
@@ -30,7 +30,13 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
     return;
   }
 
-  const outPath = resolveOutputPath(options.output, 'docker-compose.yml', projectRoot);
+  // No --output: the config's docker.output_file, relative to the project root. It comes from a
+  // file that may have been shared by someone else, so it must stay inside the project.
+  const configuredName = config.docker?.output_file ?? 'docker-compose.yml';
+  if (!options.output?.trim() && (path.isAbsolute(configuredName) || !isInsideDir(path.resolve(projectRoot, configuredName), projectRoot))) {
+    throw new Error(`docker.output_file "${configuredName}" must be a path inside the project. Use --output to write elsewhere.`);
+  }
+  const outPath = resolveOutputPath(options.output, configuredName, projectRoot);
 
   const templatesDir = getTemplatesDir();
   const content = generatedHeader('docker compose') + generateComposeContent(config, templatesDir);

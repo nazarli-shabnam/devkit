@@ -44,29 +44,30 @@ describe('init wizard (runInit)', () => {
     expect(parsed.docker?.enabled).toBe(true);
   });
 
-  it('captures a database with a health check from wizard answers', async () => {
-    // name, version, addDeps?, addDb?(yes), dbType, dbFields..., then addDb?(no) etc.
-    // db prompt sequence after type select: name, port, user, password, database, migrations?, seed?
-    // To stay robust we drive a redis DB which has the fewest follow-ups.
+  it('captures a database from wizard answers without writing inert options', async () => {
+    // db prompt sequence after type select: name, version, port, user, password (redis: no database name)
     prompts.inject([
       'db-app', '1.0.0',
-      false,                                   // addDeps?
-      true, 'redis',                           // addDb? + type
-      'cache', '7', 6379, 'localhost', '', '', // db: name, version, port, host, user, password
-      false,                                   // add migrations?
-      false,                                   // add seed?
-      false,                                   // addDb? (stop)
-      false,                                   // addService?
-      false,                                   // addEnv?
-      false,                                   // dockerEnabled?
-      true,                                    // add health check?
+      false,                             // addDeps?
+      true, 'redis',                     // addDb? + type
+      'cache', '7', 6379, '', '',        // db: name, version, port, user, password
+      false,                             // add migrations?
+      false,                             // add seed?
+      false,                             // addDb? (stop)
+      false,                             // addService?
+      false,                             // addEnv?
+      false,                             // dockerEnabled?
     ]);
 
     await runInit(tempDir);
 
     const configPath = path.join(tempDir, '.dev-env.yml');
-    const parsed = DevEnvConfigSchema.parse(yaml.load(await fs.readFile(configPath, 'utf-8')));
+    const text = await fs.readFile(configPath, 'utf-8');
+    const parsed = DevEnvConfigSchema.parse(yaml.load(text));
     expect(parsed.databases?.[0]?.type).toBe('redis');
-    expect(parsed.health_checks?.some((h) => h.type === 'redis')).toBe(true);
+    // options envkit does not use are no longer written
+    expect(text).not.toMatch(/^\s*host:/m);
+    expect(text).not.toMatch(/^snapshot:/m);
+    expect(text).not.toMatch(/connection_string|^\s*url:/m);
   });
 });

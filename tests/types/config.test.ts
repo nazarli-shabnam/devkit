@@ -43,9 +43,9 @@ describe('config schemas', () => {
       expect(DatabaseSchema.parse(db)).toMatchObject(db);
     });
 
-    it('defaults host to localhost', () => {
-      const parsed = DatabaseSchema.parse({ type: 'redis', port: 6379 });
-      expect(parsed.host).toBe('localhost');
+    it('accepts host but does not invent one (it is not used by envkit)', () => {
+      expect(DatabaseSchema.parse({ type: 'redis', port: 6379 }).host).toBeUndefined();
+      expect(DatabaseSchema.parse({ type: 'redis', host: 'db.local' }).host).toBe('db.local');
     });
   });
 

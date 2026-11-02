@@ -23,7 +23,7 @@ export function resolveOutputPath(
   cwd: string = process.cwd()
 ): string {
   const explicit = output?.trim();
-  if (!explicit) return path.join(projectRoot, defaultName);
+  if (!explicit) return path.resolve(projectRoot, defaultName);
   assertRelativeOutputInside(explicit, cwd);
   return path.resolve(cwd, explicit);
 }

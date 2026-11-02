@@ -9,7 +9,6 @@ import {
   type Dependency,
   type Database,
   type Service,
-  type HealthCheck,
 } from '../types/config';
 
 const DEPENDENCY_TYPES = ['npm', 'yarn', 'pnpm', 'pip', 'pipenv', 'poetry', 'cargo', 'go', 'custom'] as const;
@@ -146,7 +145,6 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
       { type: 'text', name: 'name', message: 'Database name (optional)', initial: 'db' },
       { type: 'text', name: 'version', message: 'Version (e.g. 15 for Postgres)', initial: '15' },
       { type: 'number', name: 'port', message: 'Port', initial: DB_DEFAULT_PORTS[dbChoice.type] ?? 5432 },
-      { type: 'text', name: 'host', message: 'Host', initial: 'localhost' },
       { type: 'text', name: 'user', message: 'User (use ${DB_USER} for .env)', initial: '${DB_USER}' },
       { type: 'text', name: 'password', message: 'Password (use ${DB_PASSWORD} for .env)', initial: '${DB_PASSWORD}' },
     ];
@@ -159,7 +157,6 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
       name: dbAnswers.name || undefined,
       version: dbAnswers.version || undefined,
       port: dbAnswers.port,
-      host: dbAnswers.host || 'localhost',
       user: dbAnswers.user || undefined,
       password: dbAnswers.password || undefined,
       database: dbAnswers.database || undefined,
@@ -239,7 +236,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     env = { NODE_ENV: 'development' };
     if (databases.length > 0 && databases[0].type === 'postgresql') {
       const db = databases[0];
-      env.DATABASE_URL = `postgresql://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${db.port || 5432}/${db.database || 'myapp'}`;
+      env.DATABASE_URL = `postgresql://\${DB_USER}:\${DB_PASSWORD}@localhost:${db.port || 5432}/${db.database || 'myapp'}`;
     }
   }
 
@@ -252,59 +249,6 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     ? { enabled: true, output_file: 'docker-compose.yml', network_name: 'dev-network' }
     : { enabled: false, output_file: 'docker-compose.yml', network_name: 'dev-network' };
 
-  const snapshot: DevEnvConfig['snapshot'] = {
-    include_databases: true,
-    include_volumes: true,
-    exclude_paths: ['node_modules', '.git', 'dist', 'build'],
-  };
-
-  const health_checks: HealthCheck[] = [];
-  const healthEligible = databases.filter(
-    (d) => d.type === 'postgresql' || d.type === 'mysql' || d.type === 'mariadb' || d.type === 'mongodb' || d.type === 'redis'
-  );
-  if (healthEligible.length > 0) {
-    const addHealth = await prompts(
-      {
-        type: 'confirm',
-        name: 'value',
-        message: healthEligible.length === 1
-          ? `Add a health check for ${healthEligible[0].name || healthEligible[0].type}? (optional)`
-          : `Add health checks for your ${healthEligible.length} databases? (optional)`,
-        initial: true,
-      },
-      { onCancel: () => process.exit(0) }
-    );
-    if (addHealth.value) {
-      const DB_DEFAULT_HC_PORTS: Record<string, number> = {
-        postgresql: 5432, mysql: 3306, mariadb: 3306, mongodb: 27017, redis: 6379,
-      };
-      for (const db of healthEligible) {
-        const port = db.port ?? DB_DEFAULT_HC_PORTS[db.type] ?? 5432;
-        if (db.type === 'redis') {
-          health_checks.push({ name: db.name || 'redis', type: 'redis', url: `redis://${db.host || 'localhost'}:${port}` });
-        } else if (db.type === 'postgresql') {
-          health_checks.push({
-            name: db.name || 'database',
-            type: 'postgresql',
-            connection_string: `postgresql://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${port}/${db.database || 'myapp'}`,
-          });
-        } else if (db.type === 'mysql' || db.type === 'mariadb') {
-          health_checks.push({
-            name: db.name || 'database',
-            type: db.type,
-            connection_string: `mysql://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${port}/${db.database || 'myapp'}`,
-          });
-        } else if (db.type === 'mongodb') {
-          health_checks.push({
-            name: db.name || 'database',
-            type: 'mongodb',
-            connection_string: `mongodb://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${port}/${db.database || 'myapp'}`,
-          });
-        }
-      }
-    }
-  }
-
   const raw: DevEnvConfig = {
     name: basic.name?.trim() || defaultName,
     version: basic.version?.trim() || '1.0.0',
@@ -312,8 +256,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     databases,
     services,
     env,
-    health_checks,
-    snapshot,
+    health_checks: [],
     docker,
   };
 
