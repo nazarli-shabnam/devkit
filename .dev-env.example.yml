@@ -2,6 +2,7 @@
 # Copy this file to .dev-env.yml and customize for your project
 
 name: my-project
+# Tip: quote versions ("15", "3.10"): YAML reads an unquoted 3.10 as the number 3.1.
 version: "1.0.0"
 
 dependencies:

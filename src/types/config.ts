@@ -1,5 +1,22 @@
 import { z } from 'zod';
 
+/**
+ * `${VAR}` references always resolve to strings, so numeric fields accept plain
+ * integer strings (e.g. `port: ${DB_PORT}` with DB_PORT=5433) in addition to numbers.
+ */
+const numericString = (v: unknown): unknown =>
+  typeof v === 'string' && /^\s*\d+\s*$/.test(v) ? Number(v) : v;
+
+const portField = () => z.preprocess(numericString, z.number().int().min(0).max(65535));
+const countField = () => z.preprocess(numericString, z.number().int().min(0));
+
+/**
+ * Versions are strings, but YAML turns an unquoted `15` or `3.12` into a number.
+ * Accept numbers (converted to text). Note an unquoted `3.10` is already `3.1` once YAML
+ * has parsed it, so versions that end in a zero must still be quoted.
+ */
+const versionField = () => z.preprocess((v) => (typeof v === 'number' ? String(v) : v), z.string());
+
 export const DependencySchema = z.object({
   type: z.enum(['npm', 'yarn', 'pnpm', 'pip', 'pipenv', 'poetry', 'cargo', 'go', 'custom']),
   command: z.string(),
@@ -12,8 +29,8 @@ export type Dependency = z.infer<typeof DependencySchema>;
 export const DatabaseSchema = z.object({
   type: z.enum(['postgresql', 'mysql', 'mariadb', 'mongodb', 'redis', 'sqlite']),
   name: z.string().optional(),
-  version: z.string().optional(),
-  port: z.number().optional(),
+  version: versionField().optional(),
+  port: portField().optional(),
   host: z.string().optional().default('localhost'),
   user: z.string().optional(),
   password: z.string().optional(),
@@ -32,10 +49,10 @@ export type Database = z.infer<typeof DatabaseSchema>;
 
 export const ServiceSchema = z.object({
   type: z.string(),
-  version: z.string().optional(),
-  port: z.number().optional(),
+  version: versionField().optional(),
+  port: portField().optional(),
   host: z.string().optional().default('localhost'),
-  management_port: z.number().optional(),
+  management_port: portField().optional(),
 });
 
 export type Service = z.infer<typeof ServiceSchema>;
@@ -49,7 +66,7 @@ export const HealthCheckSchema = z.object({
   test: z.string().optional(),
   interval: z.string().optional(),
   timeout: z.string().optional(),
-  retries: z.number().optional(),
+  retries: countField().optional(),
 });
 
 export type HealthCheck = z.infer<typeof HealthCheckSchema>;
@@ -74,7 +91,7 @@ export type DockerConfig = z.infer<typeof DockerConfigSchema>;
 
 export const DevEnvConfigSchema = z.object({
   name: z.string(),
-  version: z.string().optional(),
+  version: versionField().optional(),
   dependencies: z.array(DependencySchema).optional().default([]),
   databases: z.array(DatabaseSchema).optional().default([]),
   services: z.array(ServiceSchema).optional().default([]),
