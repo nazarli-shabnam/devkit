@@ -70,18 +70,30 @@ export function resolveEnvVars(
 }
 
 /**
+ * The string values of the config's own `env:` block. ${VAR} references elsewhere in the
+ * file (including inside other env values) may point at these. An entry that refers to its own
+ * name (`TOKEN: ${TOKEN}`, `PATH: ${PATH}:/extra`) is a pass-through from the ambient
+ * environment, so it is left out and resolves from `.env`/the shell as it always did.
+ */
+function extractLocalEnv(rawConfig: unknown): Record<string, string> {
+  const localEnv: Record<string, string> = {};
+  const envBlock = (rawConfig as { env?: unknown } | null | undefined)?.env;
+  if (envBlock && typeof envBlock === 'object') {
+    for (const [k, v] of Object.entries(envBlock)) {
+      if (typeof v === 'string' && !v.includes('${' + k + '}')) localEnv[k] = v;
+    }
+  }
+  return localEnv;
+}
+
+/**
  * Walk a raw (pre-validation) config object and return the names of all
  * `${VAR}` references that cannot be resolved from process.env or the config's
  * own `env` block. Used by `envkit validate --strict`.
  */
 export function findUnresolvedVars(rawConfig: any): string[] {
   const unresolved = new Set<string>();
-  const localEnv: Record<string, string> = {};
-  if (rawConfig && typeof rawConfig === 'object' && rawConfig.env && typeof rawConfig.env === 'object') {
-    for (const [k, v] of Object.entries(rawConfig.env)) {
-      if (typeof v === 'string') localEnv[k] = v;
-    }
-  }
+  const localEnv = extractLocalEnv(rawConfig);
 
   const walk = (obj: any): void => {
     if (typeof obj === 'string') {
@@ -122,7 +134,7 @@ export async function loadConfig(projectRoot: string = process.cwd()): Promise<D
     const content = await readFile(configPath);
     const rawConfig = yaml.load(content, { schema: yaml.DEFAULT_SCHEMA }) as any;
 
-    const resolvedConfig = resolveEnvVarsInConfig(rawConfig);
+    const resolvedConfig = resolveEnvVarsInConfig(rawConfig, extractLocalEnv(rawConfig));
 
     const config = DevEnvConfigSchema.parse(resolvedConfig);
 
@@ -205,15 +217,15 @@ export async function loadConfigOrPromptInit(projectRoot: string = process.cwd()
   return loadConfig(projectRoot);
 }
 
-function resolveEnvVarsInConfig(obj: any): any {
+function resolveEnvVarsInConfig(obj: any, localEnv: Record<string, string>): any {
   if (typeof obj === 'string') {
-    return resolveEnvVars(obj);
+    return resolveEnvVars(obj, localEnv);
   } else if (Array.isArray(obj)) {
-    return obj.map(item => resolveEnvVarsInConfig(item));
+    return obj.map(item => resolveEnvVarsInConfig(item, localEnv));
   } else if (obj !== null && typeof obj === 'object') {
     const resolved: any = {};
     for (const [key, value] of Object.entries(obj)) {
-      resolved[key] = resolveEnvVarsInConfig(value);
+      resolved[key] = resolveEnvVarsInConfig(value, localEnv);
     }
     return resolved;
   }
