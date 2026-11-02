@@ -102,9 +102,10 @@ snapshotCommand
   .command('create')
   .description('Create a new snapshot')
   .argument('[name]', 'Snapshot name')
-  .action(async (name) => {
+  .option('-f, --force', 'Replace an existing snapshot with the same name')
+  .action(async (name, options) => {
     try {
-      await runSnapshotCreate(name);
+      await runSnapshotCreate(name, { force: options.force });
     } catch (err: unknown) {
       logger.error((err as Error).message ?? 'Snapshot create failed');
       process.exit(1);

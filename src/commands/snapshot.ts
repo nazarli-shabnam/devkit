@@ -1,7 +1,15 @@
 import * as path from 'path';
 import prompts from 'prompts';
 import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
-import { createSnapshot, listSnapshots, getSnapshotConfig, deleteSnapshot } from '../core/snapshot/storage';
+import {
+  createSnapshot,
+  listSnapshots,
+  getSnapshotConfig,
+  deleteSnapshot,
+  sanitizeSnapshotName,
+  snapshotExists,
+  uniqueSnapshotName,
+} from '../core/snapshot/storage';
 import { isInteractive } from './init';
 import { fileExists, readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
@@ -10,15 +18,35 @@ function timestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 }
 
-export async function runSnapshotCreate(name?: string): Promise<void> {
+export interface SnapshotCreateOptions {
+  /** Replace an existing snapshot with the same name. */
+  force?: boolean;
+}
+
+export async function runSnapshotCreate(name?: string, options: SnapshotCreateOptions = {}): Promise<void> {
   const projectRoot = await findProjectRoot(process.cwd());
   await loadConfigOrPromptInit(projectRoot);
 
   const configPath = path.join(projectRoot, '.dev-env.yml');
   const configYaml = await readFile(configPath);
 
-  const snapshotName =
-    name && name.trim() ? name.trim() : `snapshot-${timestamp()}`;
+  const requested = name?.trim();
+  let snapshotName = `snapshot-${timestamp()}`;
+  if (requested) {
+    if (!/[A-Za-z0-9]/.test(requested)) {
+      throw new Error(`Snapshot name "${requested}" needs at least one letter or digit.`);
+    }
+    snapshotName = sanitizeSnapshotName(requested);
+    if (snapshotName !== requested) {
+      logger.info(`Snapshot name "${requested}" is stored as "${snapshotName}" (only letters, digits, "-" and "_" are kept).`);
+    }
+  }
+
+  if (!options.force && (await snapshotExists(projectRoot, snapshotName))) {
+    throw new Error(
+      `Snapshot "${snapshotName}" already exists. Choose another name, or re-run with --force to replace it.`
+    );
+  }
   const meta = await createSnapshot(projectRoot, snapshotName, configYaml);
 
   logger.success(`Snapshot "${meta.name}" created at ${meta.createdAt}`);
@@ -74,7 +102,11 @@ export async function runSnapshotRestore(name: string, options: SnapshotRestoreO
   // Auto-backup the current config so a restore is never destructive.
   if (currentExists) {
     const currentYaml = await readFile(configPath);
-    const backup = await createSnapshot(projectRoot, `pre-restore-${timestamp()}`, currentYaml);
+    const backup = await createSnapshot(
+      projectRoot,
+      await uniqueSnapshotName(projectRoot, `pre-restore-${timestamp()}`),
+      currentYaml
+    );
     logger.info(`Backed up current config to snapshot "${backup.name}".`);
   }
 
