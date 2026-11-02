@@ -44,6 +44,26 @@ describe('init wizard (runInit)', () => {
     expect(parsed.docker?.enabled).toBe(true);
   });
 
+  it('captures a service from wizard answers without writing inert options', async () => {
+    prompts.inject([
+      'svc-app', '1.0.0',
+      false,                                  // addDeps?
+      false,                                  // addDb?
+      true,                                   // addService?
+      'rabbitmq', '3.12', 5672, 15672,        // service: type, version, port, management port
+      false,                                  // addService? (stop)
+      false,                                  // addEnv?
+      false,                                  // dockerEnabled?
+    ]);
+
+    await runInit(tempDir);
+
+    const text = await fs.readFile(path.join(tempDir, '.dev-env.yml'), 'utf-8');
+    const parsed = DevEnvConfigSchema.parse(yaml.load(text));
+    expect(parsed.services?.[0]).toMatchObject({ type: 'rabbitmq', port: 5672, management_port: 15672 });
+    expect(text).not.toMatch(/^\s*host:/m);
+  });
+
   it('captures a database from wizard answers without writing inert options', async () => {
     // db prompt sequence after type select: name, version, port, user, password (redis: no database name)
     prompts.inject([

@@ -220,7 +220,6 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
         type: svc.type.trim(),
         version: svc.version || undefined,
         port: svc.port,
-        host: 'localhost',
         ...(svc.management_port && svc.management_port > 0 ? { management_port: svc.management_port } : {}),
       });
     }

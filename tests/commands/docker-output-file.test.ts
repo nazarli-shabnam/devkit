@@ -48,7 +48,9 @@ describe('generate honours docker.output_file', () => {
     expect(await fs.pathExists(path.join(root, 'docker-compose.yml'))).toBe(true);
   });
 
-  it.each(['../outside.yml', '/etc/envkit-test.yml', 'C:/Windows/envkit-test.yml'])(
+  // A drive path is only "absolute" on Windows; elsewhere it is just an odd relative name (inside the project).
+  const escaping = ['../outside.yml', '/etc/envkit-test.yml', ...(process.platform === 'win32' ? ['C:/Windows/envkit-test.yml'] : [])];
+  it.each(escaping)(
     'rejects a configured path that leaves the project (%s)',
     async (target) => {
       await writeConfig(`docker:\n  output_file: ${target}`);
