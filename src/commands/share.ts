@@ -58,7 +58,8 @@ function safeDecode(text: string): string {
 }
 
 function hasLiteralCredentials(value: string): boolean | undefined {
-  const match = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/([\s\S]*)$/.exec(value);
+  // Not anchored: `jdbc:postgresql://user:pw@host/db` and `prefix=mongodb://...` carry a URL too.
+  const match = /[A-Za-z][A-Za-z0-9+.-]*:\/\/([\s\S]*)$/.exec(value);
   if (!match) return undefined;
 
   const rest = match[1];

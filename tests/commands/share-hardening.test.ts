@@ -104,6 +104,23 @@ describe('share sanitizer hardening', () => {
     });
   });
 
+  describe('URLs with a prefix or embedded in other text', () => {
+    it.each([
+      'jdbc:postgresql://u:pw@h:5432/d',
+      'jdbc:mysql://h/d?user=u&password=pw',
+      'driver=mongodb://root:pw@h/d',
+    ])('masks %s', (value) => {
+      expect(sanitize({ env: { CONN: value } }).env).toEqual({ CONN: '${CONN}' });
+      const out = sanitize({ health_checks: [{ name: 'a', type: 'db', connection_string: value }] });
+      expect(out.health_checks[0].connection_string).toBe('${CONNECTION_STRING}');
+    });
+
+    it('keeps a prefixed URL whose credentials are references', () => {
+      const value = 'jdbc:postgresql://${DB_USER}:${DB_PASSWORD}@h/d';
+      expect(sanitize({ env: { CONN: value } }).env).toEqual({ CONN: value });
+    });
+  });
+
   describe('placeholder ids never collide', () => {
     it('de-duplicates database names that differ only by case or punctuation', () => {
       const out = sanitize({
