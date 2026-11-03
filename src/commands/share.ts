@@ -1,7 +1,6 @@
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { findProjectRoot, loadConfigOrPromptInit, loadRawConfig, loadEnvFile, findUnresolvedVars } from '../core/config/loader';
-import { isSecretEnvKey } from '../core/config/validator';
+import { findProjectRoot, loadConfigOrPromptInit, loadRawConfig, loadEnvFile } from '../core/config/loader';
 import { DevEnvConfig, DevEnvConfigSchema } from '../types/config';
 import { fileExists, readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
@@ -18,33 +17,62 @@ function validateOutputPath(outPath: string, baseDir: string): void {
 const SINGLE_REFERENCE = /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/;
 const isReference = (value: string): boolean => SINGLE_REFERENCE.test(value);
 
-/** `ID` for a placeholder name: upper-cased, non-alphanumerics collapsed to `_`. */
+/** Placeholder-name fragment: upper-cased, non-alphanumerics collapsed to `_`. */
 const placeholderId = (raw: string): string => raw.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
 /**
- * Does this URL-like string carry literal credentials (userinfo or a secret-looking query
- * parameter)? `${VAR}` references do not count: they are exactly what we want to share.
+ * One placeholder id per entry, guaranteed distinct: names that differ only by case/punctuation
+ * (`main-db` / `main_db`), explicit-vs-generated names, and names with no usable characters
+ * all get a numeric suffix instead of sharing a variable.
+ */
+function uniqueIds(names: string[], fallback: (index: number) => string): string[] {
+  const used = new Set<string>();
+  return names.map((name, index) => {
+    const base = placeholderId(name) || fallback(index);
+    let candidate = base;
+    for (let n = 2; used.has(candidate); n++) candidate = `${base}_${n}`;
+    used.add(candidate);
+    return candidate;
+  });
+}
+
+/**
+ * Does this URL-like string carry literal credentials? Everything before the LAST `@` counts as
+ * userinfo, so passwords containing an unencoded `/`, `?` or `#` are still caught (this errs on
+ * the side of masking). `${VAR}` references are not credentials: they are what we want to share.
  * Returns undefined when the string is not URL-like at all.
  */
 function hasLiteralCredentials(value: string): boolean | undefined {
-  const match = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/([^/?#]*)([^#]*)/.exec(value);
+  const match = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/([\s\S]*)$/.exec(value);
   if (!match) return undefined;
 
-  const authority = match[1];
-  const at = authority.lastIndexOf('@');
-  if (at !== -1) {
-    const userinfo = authority.slice(0, at).replace(/\$\{[^}]*\}/g, '').replace(/:/g, '');
-    if (userinfo !== '') return true;
-  }
+  const rest = match[1];
+  const at = rest.lastIndexOf('@');
+  if (at !== -1 && rest.slice(0, at).replace(/\$\{[^}]*\}/g, '').replace(/:/g, '') !== '') return true;
 
-  const query = match[2].split('?')[1] ?? '';
-  return query
-    .split('&')
-    .some((pair) => {
-      const [key, val = ''] = pair.split('=');
-      return /password|secret|token|key|auth/i.test(key) && val !== '' && !isReference(val);
-    });
+  const query = rest.split('?').slice(1).join('?').split('#')[0];
+  return query.split('&').some((pair) => {
+    const [key, val = ''] = pair.split('=');
+    return /password|passwd|pwd|secret|token|key|auth/i.test(key) && val !== '' && !isReference(val);
+  });
 }
+
+/** Credentials embedded in free-form text: `user:pass@host` or `password=...` style pairs. */
+function looksLikeEmbeddedCredentials(value: string): boolean {
+  if (hasLiteralCredentials(value) === true) return true;
+  // `scheme://...` values were fully judged above; this catches `user:pass@host` without a scheme.
+  if (!value.includes('://') && /[^\s/@:=;,]+:[^\s@]+@/.test(value.replace(/\$\{[^}]*\}/g, ''))) return true;
+  const pair = /(?:^|[;&,\s?])(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key)\s*=\s*([^;&\s]*)/i.exec(value);
+  return pair !== null && pair[1] !== '' && !isReference(pair[1]);
+}
+
+/**
+ * Env keys that name a secret. Deliberately broad (substring, case-insensitive): a false positive
+ * only costs the importer one variable to fill in, a false negative leaks a secret.
+ */
+const SECRET_KEY = /pass|pwd|secret|token|key|auth|credential|private|signature|cert|dsn|salt|session/i;
+const SECRET_KEY_SEGMENT = /(^|[^a-z])(pat|sk|pk)([^a-z]|$)/i;
+const looksLikeSecretKey = (key: string): boolean => SECRET_KEY.test(key) || SECRET_KEY_SEGMENT.test(key);
 
 /**
  * Prepare a config for sharing: credentials and secret-looking values are replaced by `${VAR}`
@@ -53,46 +81,85 @@ function hasLiteralCredentials(value: string): boolean | undefined {
  * database / health check, so different credentials never collapse into one variable.
  */
 export function sanitizeConfigForShare(config: DevEnvConfig): DevEnvConfig {
-  const databaseCount = config.databases?.length ?? 0;
-  const healthCheckCount = config.health_checks?.length ?? 0;
+  const databases = config.databases ?? [];
+  const healthChecks = config.health_checks ?? [];
+  // A single entry keeps the short, conventional names; several get a unique infix.
+  const databaseIds = databases.length > 1
+    ? uniqueIds(databases.map((db, i) => db.name ?? `${db.type}_${i + 1}`), (i) => `DB_${i + 1}`)
+    : [];
+  const healthCheckIds = healthChecks.length > 1
+    ? uniqueIds(healthChecks.map((h) => h.name), (i) => `CHECK_${i + 1}`)
+    : [];
 
   const out: DevEnvConfig = {
     ...config,
     dependencies: config.dependencies?.map((d) => ({ ...d })) ?? [],
-    databases: config.databases?.map((db, index) => {
+    databases: databases.map((db, index) => {
       const { password, user, ...rest } = db;
       const sanitized: typeof db = { ...rest };
-      // A single database keeps the short, conventional names.
-      const infix = databaseCount > 1 ? `${placeholderId(db.name ?? `${db.type}_${index + 1}`)}_` : '';
+      const infix = databaseIds.length > 0 ? `${databaseIds[index]}_` : '';
       if (user) sanitized.user = isReference(user) ? user : `\${DB_${infix}USER}`;
       if (password !== undefined) sanitized.password = isReference(password) ? password : `\${DB_${infix}PASSWORD}`;
       return sanitized;
-    }) ?? [],
+    }),
     services: config.services?.map((s) => ({ ...s })) ?? [],
-    // Only values that look like secrets are masked; ordinary settings (NODE_ENV, ...) stay usable.
+    // Secret-looking keys and values with embedded credentials are masked; ordinary settings
+    // (NODE_ENV, LOG_LEVEL, ...) stay usable for the importer.
     env: Object.fromEntries(
       Object.entries(config.env ?? {}).map(([key, value]) => {
-        const secret = isSecretEnvKey(key) || hasLiteralCredentials(value) === true;
+        const secret = looksLikeSecretKey(key) || looksLikeEmbeddedCredentials(value);
         return [key, secret && !isReference(value) ? `\${${key}}` : value];
       })
     ),
-    health_checks: config.health_checks?.map((h) => {
+    health_checks: healthChecks.map((h, index) => {
       const { connection_string, url, ...rest } = h;
       const sanitized: typeof h = { ...rest };
-      const infix = healthCheckCount > 1 ? `${placeholderId(h.name)}_` : '';
+      const infix = healthCheckIds.length > 0 ? `${healthCheckIds[index]}_` : '';
       if (connection_string) {
         // Non-URL formats (e.g. "Server=x;Password=y") cannot be inspected, so they are always masked.
         const literal = hasLiteralCredentials(connection_string) ?? true;
         sanitized.connection_string = literal ? `\${${infix}CONNECTION_STRING}` : connection_string;
       }
       if (url) {
-        const literal = hasLiteralCredentials(url) ?? url.includes('@');
+        const literal = hasLiteralCredentials(url) ?? (url.includes('@') || looksLikeEmbeddedCredentials(url));
         sanitized.url = literal ? `\${${infix || 'HEALTH_CHECK_'}URL}` : url;
       }
       return sanitized;
-    }) ?? [],
+    }),
   };
   return out;
+}
+
+/**
+ * Variables a config expects the user to provide: every `${NAME}` it references that is not set
+ * in the environment, has no `:-default`, and is not defined by the config's own `env:` block.
+ * A block entry that names itself (`API_KEY: ${API_KEY}`) is a pass-through placeholder, not a
+ * definition, so it still counts as required.
+ */
+export function requiredVariables(raw: unknown): string[] {
+  const defined = new Set<string>();
+  const envBlock = (raw as { env?: unknown } | null | undefined)?.env;
+  if (envBlock && typeof envBlock === 'object') {
+    for (const [key, value] of Object.entries(envBlock)) {
+      if (typeof value === 'string' && !value.includes(`\${${key}}`)) defined.add(key);
+    }
+  }
+
+  const required = new Set<string>();
+  const walk = (node: unknown): void => {
+    if (typeof node === 'string') {
+      // `$${VAR}` is an escape (literal text), so it is skipped; `${VAR:-x}` has its own default.
+      for (const m of node.matchAll(/(?<!\$)\$\{([A-Za-z_][A-Za-z0-9_]*)(:-[^}]*)?\}/g)) {
+        if (m[2] === undefined && process.env[m[1]] === undefined && !defined.has(m[1])) required.add(m[1]);
+      }
+    } else if (Array.isArray(node)) {
+      node.forEach(walk);
+    } else if (node !== null && typeof node === 'object') {
+      Object.values(node).forEach(walk);
+    }
+  };
+  walk(raw);
+  return [...required];
 }
 
 /**
@@ -169,7 +236,7 @@ export async function runShareImport(filePath: string, options: ShareImportOptio
 
   // Tell the user which variables the shared file expects them to provide.
   await loadEnvFile(await findProjectRoot(process.cwd()));
-  const missing = findUnresolvedVars(raw);
+  const missing = requiredVariables(raw);
   if (missing.length > 0) {
     logger.info(`This config references variables that are not set here: ${missing.join(', ')}. Define them in .env or your shell.`);
   }

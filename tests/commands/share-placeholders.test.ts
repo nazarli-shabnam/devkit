@@ -40,12 +40,12 @@ describe('share placeholders', () => {
 
   describe('env', () => {
     it('keeps non-secret values and masks secret keys', () => {
-      const out = sanitize({ env: { NODE_ENV: 'development', DB_PASSWORD: 'x', API_TOKEN: 'y', PASSWORD_RESET_URL: 'http://a/b' } });
+      const out = sanitize({ env: { NODE_ENV: 'development', LOG_LEVEL: 'debug', DB_PASSWORD: 'x', API_TOKEN: 'y' } });
       expect(out.env).toEqual({
         NODE_ENV: 'development',
+        LOG_LEVEL: 'debug',
         DB_PASSWORD: '${DB_PASSWORD}',
         API_TOKEN: '${API_TOKEN}',
-        PASSWORD_RESET_URL: 'http://a/b',
       });
     });
 
