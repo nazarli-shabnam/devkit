@@ -136,4 +136,37 @@ describe('config schemas', () => {
       expect(() => DevEnvConfigSchema.parse({ version: '1.0.0' })).toThrow();
     });
   });
+
+describe('numeric and version coercion', () => {
+  it('accepts numeric strings for ports and retries (e.g. resolved ${VAR})', () => {
+    const db = DatabaseSchema.parse({ type: 'postgresql', port: '5433' });
+    expect(db.port).toBe(5433);
+    const svc = ServiceSchema.parse({ type: 'rabbitmq', port: '5672', management_port: ' 15672 ' });
+    expect(svc.port).toBe(5672);
+    expect(svc.management_port).toBe(15672);
+    expect(HealthCheckSchema.parse({ name: 'x', type: 'redis', retries: '3' }).retries).toBe(3);
+  });
+
+  it('still rejects non-numeric, fractional, empty and out-of-range ports', () => {
+    for (const port of ['abc', '', '12.5', 12.5, -1, '70000', null]) {
+      expect(() => DatabaseSchema.parse({ type: 'redis', port })).toThrow();
+    }
+  });
+
+  it('does not coerce an unresolved ${VAR} placeholder', () => {
+    expect(() => DatabaseSchema.parse({ type: 'redis', port: '${DB_PORT}' })).toThrow();
+  });
+
+  it('accepts numeric versions and converts them to strings', () => {
+    expect(DatabaseSchema.parse({ type: 'redis', version: 7 }).version).toBe('7');
+    expect(ServiceSchema.parse({ type: 'rabbitmq', version: 3.12 }).version).toBe('3.12');
+    expect(DevEnvConfigSchema.parse({ name: 'x', version: 1 }).version).toBe('1');
+  });
+
+  it('leaves ports and versions optional', () => {
+    const db = DatabaseSchema.parse({ type: 'redis' });
+    expect(db.port).toBeUndefined();
+    expect(db.version).toBeUndefined();
+  });
+});
 });

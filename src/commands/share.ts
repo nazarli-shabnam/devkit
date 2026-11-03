@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
+import { findProjectRoot, loadConfigOrPromptInit, loadRawConfig } from '../core/config/loader';
 import { DevEnvConfig, DevEnvConfigSchema } from '../types/config';
 import { fileExists, readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
@@ -56,6 +56,25 @@ export function sanitizeConfigForShare(config: DevEnvConfig): DevEnvConfig {
   return out;
 }
 
+/**
+ * Walk the validated (resolved) config; wherever the file as written held a `${...}` reference,
+ * use the written text instead of the resolved value. The result has the resolved config's shape
+ * (known keys only), so nothing the schema stripped can leak through.
+ */
+export function restoreReferences(resolved: unknown, raw: unknown): unknown {
+  if (Array.isArray(resolved)) {
+    const rawItems = Array.isArray(raw) ? raw : [];
+    return resolved.map((item, i) => restoreReferences(item, rawItems[i]));
+  }
+  if (resolved !== null && typeof resolved === 'object') {
+    const rawObject = raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+    return Object.fromEntries(
+      Object.entries(resolved as Record<string, unknown>).map(([key, value]) => [key, restoreReferences(value, rawObject[key])])
+    );
+  }
+  return typeof raw === 'string' && raw.includes('${') ? raw : resolved;
+}
+
 export interface ShareExportOptions {
   output?: string;
   /** Overwrite an existing file that envkit did not generate. */
@@ -64,11 +83,13 @@ export interface ShareExportOptions {
 
 export async function runShareExport(options: ShareExportOptions = {}): Promise<void> {
   const projectRoot = await findProjectRoot(process.cwd());
+  // The validated config decides which keys exist (unknown keys are dropped by the schema)...
   const config = await loadConfigOrPromptInit(projectRoot);
+  // ...but string values go back to what the file says, so a ${VAR} reference stays a reference
+  // and a secret used anywhere (commands, health checks, hosts, ...) is never baked in as its value.
+  const withReferences = restoreReferences(config, await loadRawConfig(projectRoot)) as DevEnvConfig;
 
-  const sanitized = sanitizeConfigForShare(config);
-  // Ensure sanitized output still validates (e.g. schema hasn't drifted)
-  DevEnvConfigSchema.parse(sanitized);
+  const sanitized = sanitizeConfigForShare(withReferences);
   const yamlContent = generatedHeader('envkit share export') + yaml.dump(sanitized, { lineWidth: -1 });
 
   const outPath = resolveOutputPath(options.output, 'dev-env.shared.yml', projectRoot);

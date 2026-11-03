@@ -33,7 +33,7 @@ program
 
 program
   .option('-v, --verbose', 'Enable verbose logging')
-  .option('-q, --quiet', 'Suppress output')
+  .option('-q, --quiet', 'Only print errors (requested data such as `snapshot list` is still shown)')
   .hook('preAction', (thisCommand) => {
     if (thisCommand.opts().verbose) {
       logger.setLevel(0);
@@ -102,9 +102,10 @@ snapshotCommand
   .command('create')
   .description('Create a new snapshot')
   .argument('[name]', 'Snapshot name')
-  .action(async (name) => {
+  .option('-f, --force', 'Replace an existing snapshot with the same name')
+  .action(async (name, options) => {
     try {
-      await runSnapshotCreate(name);
+      await runSnapshotCreate(name, { force: options.force });
     } catch (err: unknown) {
       logger.error((err as Error).message ?? 'Snapshot create failed');
       process.exit(1);

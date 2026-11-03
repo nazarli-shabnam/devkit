@@ -12,6 +12,10 @@ export interface ComposeService {
   env: Record<string, string>;
   /** Pre-rendered YAML fragment for healthcheck (indented), or undefined to omit */
   healthcheck?: string;
+  /** Container data directory to persist in a named volume (databases only) */
+  dataDir?: string;
+  /** `volume:path` mounts, set at render time */
+  volumes?: string[];
 }
 
 const DB_IMAGES: Record<string, string> = {
@@ -21,6 +25,15 @@ const DB_IMAGES: Record<string, string> = {
   mongodb: 'mongo',
   redis: 'redis',
   sqlite: '',
+};
+
+/** Where each database image keeps its data. */
+const DB_DATA_DIRS: Record<string, string> = {
+  postgresql: '/var/lib/postgresql/data',
+  mysql: '/var/lib/mysql',
+  mariadb: '/var/lib/mysql',
+  mongodb: '/data/db',
+  redis: '/data',
 };
 
 const DB_HEALTHCHECK_TESTS: Record<string, string[]> = {
@@ -67,7 +80,9 @@ function buildHealthcheckForService(
   );
 
   if (matched?.test) {
-    return renderHealthcheckFragment(['CMD-SHELL', matched.test], matched);
+    // Compose interpolates `${...}` in the file on the host; `$$` makes the container's own
+    // shell see a literal `$` (so `$${POSTGRES_USER}` in the config expands inside the container).
+    return renderHealthcheckFragment(['CMD-SHELL', matched.test.replace(/\$/g, '$$$$')], matched);
   }
 
   if (matched && DB_HEALTHCHECK_TESTS[matched.type]) {
@@ -81,6 +96,15 @@ function buildHealthcheckForService(
   return renderHealthcheckFragment(test, matched);
 }
 
+/**
+ * Compose service names must match `[a-zA-Z0-9][a-zA-Z0-9_.-]*`. Anything else
+ * (slashes from namespaced images, spaces, ...) becomes `_`.
+ */
+export function toServiceName(raw: string): string {
+  const cleaned = raw.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^[^a-zA-Z0-9]+/, '');
+  return cleaned || 'service';
+}
+
 function databaseToComposeService(
   db: Database,
   index: number,
@@ -92,7 +116,10 @@ function databaseToComposeService(
   const DB_DEFAULT_PORTS: Record<string, number> = {
     postgresql: 5432, mysql: 3306, mariadb: 3306, mongodb: 27017, redis: 6379,
   };
-  const name = db.name ?? `${db.type}_${index + 1}`.replace(/-/g, '_');
+  const name = toServiceName(db.name ?? `${db.type}_${index + 1}`.replace(/-/g, '_'));
+  if (db.name && name !== db.name) {
+    logger.warn(`Database name "${db.name}" is not a valid Compose service name; using "${name}".`);
+  }
   const port = db.port ?? DB_DEFAULT_PORTS[db.type] ?? 5432;
   const ports = [`${port}:${port}`];
 
@@ -112,7 +139,7 @@ function databaseToComposeService(
     if (db.database) env.MONGO_INITDB_DATABASE = db.database;
   }
 
-  const healthcheck = buildHealthcheckForService(name, db.type, healthChecks, true);
+  const healthcheck = buildHealthcheckForService(db.name ?? name, db.type, healthChecks, true);
 
   return {
     name,
@@ -121,6 +148,7 @@ function databaseToComposeService(
     ports,
     env,
     healthcheck,
+    dataDir: DB_DATA_DIRS[db.type],
   };
 }
 
@@ -129,7 +157,7 @@ function serviceToComposeService(
   index: number,
   healthChecks: HealthCheck[] | undefined
 ): ComposeService {
-  const name = `${svc.type}_${index + 1}`.replace(/-/g, '_');
+  const name = toServiceName(`${svc.type}_${index + 1}`.replace(/-/g, '_'));
   const ports: string[] = [];
   if (svc.port) ports.push(`${svc.port}:${svc.port}`);
   if (svc.management_port) ports.push(`${svc.management_port}:${svc.management_port}`);
@@ -197,9 +225,23 @@ export function generateComposeContent(config: DevEnvConfig, templatesDir: strin
     services.push(s);
   });
 
+  // Named volumes keep database data across `docker compose down`/`up` (opt out: docker.persist_data: false).
+  const volumeNames: string[] = [];
+  if (config.docker?.persist_data !== false) {
+    for (const svc of services) {
+      if (!svc.dataDir) continue;
+      const volume = `${svc.name}_data`;
+      svc.volumes = [`${volume}:${svc.dataDir}`];
+      // postgres:18+ moved its default data dir and refuses a mount at the old path unless
+      // PGDATA points there, so pin it (valid for every version).
+      if (svc.image === 'postgres') svc.env.PGDATA = svc.dataDir;
+      volumeNames.push(volume);
+    }
+  }
+
   const networkName = config.docker?.network_name ?? 'dev-network';
 
   const template = loadComposeTemplate(templatesDir);
   const compiled = Handlebars.compile(template);
-  return compiled({ services, networkName });
+  return compiled({ services, networkName, volumeNames });
 }

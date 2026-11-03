@@ -2,6 +2,7 @@
 # Copy this file to .dev-env.yml and customize for your project
 
 name: my-project
+# Tip: quote versions ("15", "3.10"): YAML reads an unquoted 3.10 as the number 3.1.
 version: "1.0.0"
 
 dependencies:
@@ -40,7 +41,8 @@ services:
 # Environment variables (use .env file for secrets)
 env:
   NODE_ENV: development
-  # Use ${VAR_NAME} syntax to reference .env variables
+  # Use ${VAR_NAME} syntax to reference .env variables; ${VAR:-default} supplies a fallback,
+  # and $${VAR} writes a literal ${VAR} (e.g. for a command that expands it itself)
   DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/myapp
   # REDIS_URL: redis://localhost:6379
 
@@ -59,3 +61,4 @@ docker:
   enabled: true
   output_file: docker-compose.yml
   network_name: dev-network
+  persist_data: true   # named volume per database so data survives `docker compose down`
