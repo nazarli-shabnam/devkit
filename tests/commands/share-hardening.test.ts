@@ -115,6 +115,19 @@ describe('share sanitizer hardening', () => {
       expect(out.health_checks[0].connection_string).toBe('${CONNECTION_STRING}');
     });
 
+    it('a URL inside other text does not vouch for the text around it', () => {
+      for (const value of ['Server=h;Password=x;Url=http://ok.example/', 'Host=h Pwd=secret see http://ok.example']) {
+        const out = sanitize({ health_checks: [{ name: 'a', type: 'db', connection_string: value }] });
+        expect(out.health_checks[0].connection_string).toBe('${CONNECTION_STRING}');
+        expect(sanitize({ env: { CONN: value } }).env).toEqual({ CONN: '${CONN}' });
+      }
+    });
+
+    it('every URL in a value is judged, not just the first', () => {
+      const value = 'http://ok.example/a http://u:pw@h/b';
+      expect(sanitize({ env: { URLS: value } }).env).toEqual({ URLS: '${URLS}' });
+    });
+
     it('keeps a prefixed URL whose credentials are references', () => {
       const value = 'jdbc:postgresql://${DB_USER}:${DB_PASSWORD}@h/d';
       expect(sanitize({ env: { CONN: value } }).env).toEqual({ CONN: value });

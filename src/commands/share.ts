@@ -67,10 +67,16 @@ function hasLiteralCredentials(value: string): boolean | undefined {
   if (at !== -1 && rest.slice(0, at).replace(PLAIN_REFERENCES, '').replace(/:/g, '') !== '') return true;
 
   // Secret-looking key=value pairs anywhere after the authority: query, fragment, `;` parameters.
-  return rest.split(/[?#&;]/).slice(1).some((pair) => {
+  const hasSecretPair = rest.split(/[?#&;]/).slice(1).some((pair) => {
     const [rawKey, val = ''] = pair.split('=');
     return SECRET_PAIR_KEY.test(safeDecode(rawKey)) && val !== '' && !isReference(val);
   });
+  if (hasSecretPair) return true;
+
+  // Finding a URL *inside* other text (`Server=h;Password=x;Url=http://ok/`) proves nothing about
+  // the text around it, so only a value that really is a (possibly `jdbc:`-prefixed) URL is vouched
+  // for. Anything else is an unknown format and callers treat it conservatively.
+  return /^(?:[A-Za-z][A-Za-z0-9+.-]*:)+\/\//.test(value.trimStart()) ? false : undefined;
 }
 
 /** Credentials embedded in free-form text: `user:pass@host` or `password=...` style pairs. */
