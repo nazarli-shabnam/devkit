@@ -42,18 +42,33 @@ function uniqueIds(names: string[], fallback: (index: number) => string): string
  * the side of masking). `${VAR}` references are not credentials: they are what we want to share.
  * Returns undefined when the string is not URL-like at all.
  */
+/**
+ * Only a plain `${VAR}` is a safe stand-in for a credential. `${VAR:-secret}` carries a literal
+ * default, so it is not stripped and still counts as a credential.
+ */
+const PLAIN_REFERENCES = /\$\{[A-Za-z_][A-Za-z0-9_]*\}/g;
+const SECRET_PAIR_KEY = /password|passwd|pwd|secret|token|key|auth/i;
+
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
 function hasLiteralCredentials(value: string): boolean | undefined {
   const match = /^[A-Za-z][A-Za-z0-9+.-]*:\/\/([\s\S]*)$/.exec(value);
   if (!match) return undefined;
 
   const rest = match[1];
   const at = rest.lastIndexOf('@');
-  if (at !== -1 && rest.slice(0, at).replace(/\$\{[^}]*\}/g, '').replace(/:/g, '') !== '') return true;
+  if (at !== -1 && rest.slice(0, at).replace(PLAIN_REFERENCES, '').replace(/:/g, '') !== '') return true;
 
-  const query = rest.split('?').slice(1).join('?').split('#')[0];
-  return query.split('&').some((pair) => {
-    const [key, val = ''] = pair.split('=');
-    return /password|passwd|pwd|secret|token|key|auth/i.test(key) && val !== '' && !isReference(val);
+  // Secret-looking key=value pairs anywhere after the authority: query, fragment, `;` parameters.
+  return rest.split(/[?#&;]/).slice(1).some((pair) => {
+    const [rawKey, val = ''] = pair.split('=');
+    return SECRET_PAIR_KEY.test(safeDecode(rawKey)) && val !== '' && !isReference(val);
   });
 }
 
@@ -61,7 +76,7 @@ function hasLiteralCredentials(value: string): boolean | undefined {
 function looksLikeEmbeddedCredentials(value: string): boolean {
   if (hasLiteralCredentials(value) === true) return true;
   // `scheme://...` values were fully judged above; this catches `user:pass@host` without a scheme.
-  if (!value.includes('://') && /[^\s/@:=;,]+:[^\s@]+@/.test(value.replace(/\$\{[^}]*\}/g, ''))) return true;
+  if (!value.includes('://') && /[^\s/@:=;,]+:[^\s@]+@/.test(value.replace(PLAIN_REFERENCES, ''))) return true;
   const pair = /(?:^|[;&,\s?])(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key)\s*=\s*([^;&\s]*)/i.exec(value);
   return pair !== null && pair[1] !== '' && !isReference(pair[1]);
 }

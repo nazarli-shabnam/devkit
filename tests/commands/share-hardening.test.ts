@@ -65,6 +65,45 @@ describe('share sanitizer hardening', () => {
     });
   });
 
+  describe('defaults and unusual separators cannot smuggle a credential through', () => {
+    it('treats a ${VAR:-default} in userinfo as a literal credential (only plain ${VAR} is safe)', () => {
+      const out = sanitize({
+        env: {
+          A: 'postgres://${U:-admin}:${P:-hunter2}@h/d',
+          B: 'postgres://${U}:${P}@h/d',
+        },
+      });
+      expect(out.env).toEqual({ A: '${A}', B: 'postgres://${U}:${P}@h/d' });
+    });
+
+    it('finds secret-looking pairs in the fragment, after ; and with percent-encoded keys', () => {
+      const out = sanitize({
+        env: {
+          FRAG: 'https://h/x#token=abc',
+          SEMI: 'https://h/x;password=abc',
+          ENC: 'https://h/x?pass%77ord=abc',
+          FINE: 'https://h/x?page=2#top',
+        },
+      });
+      expect(out.env).toEqual({
+        FRAG: '${FRAG}',
+        SEMI: '${SEMI}',
+        ENC: '${ENC}',
+        FINE: 'https://h/x?page=2#top',
+      });
+    });
+
+    it('applies to health check urls too, and tolerates malformed percent escapes', () => {
+      const out = sanitize({
+        health_checks: [
+          { name: 'a', type: 'http', url: 'https://h/x#api_key=abc' },
+          { name: 'b', type: 'http', url: 'https://h/x?100%=ok&a=1' },
+        ],
+      });
+      expect(out.health_checks.map((h) => h.url)).toEqual(['${A_URL}', 'https://h/x?100%=ok&a=1']);
+    });
+  });
+
   describe('placeholder ids never collide', () => {
     it('de-duplicates database names that differ only by case or punctuation', () => {
       const out = sanitize({
