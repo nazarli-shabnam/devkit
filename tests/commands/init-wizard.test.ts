@@ -73,7 +73,7 @@ describe('init wizard (runInit)', () => {
       'db-app', '1.0.0',
       false,                             // addDeps?
       true, 'redis',                     // addDb? + type
-      'cache', '7', 6379, '', '',        // db: name, version, port, user, password
+      'cache', '7', 6379, '',           // db: name, version, port, password (redis has no user)
       false,                             // add migrations?
       false,                             // add seed?
       false,                             // addDb? (stop)

@@ -31,6 +31,81 @@ export function isInteractive(): boolean {
   return terminalAvailable();
 }
 
+interface DatabaseDefaults {
+  version?: string;
+  port?: number;
+  /** Whether the database has a user name / a password / a database name (sqlite: a file instead). */
+  user: boolean;
+  password: boolean;
+  database: boolean;
+}
+
+/** Sensible wizard defaults per database type; images are `type:version`, so versions must exist for that image. */
+export const DATABASE_DEFAULTS: Record<Database['type'], DatabaseDefaults> = {
+  postgresql: { version: '16', port: 5432, user: true, password: true, database: true },
+  mysql: { version: '8', port: 3306, user: true, password: true, database: true },
+  mariadb: { version: '11', port: 3306, user: true, password: true, database: true },
+  mongodb: { version: '7', port: 27017, user: true, password: true, database: true },
+  redis: { version: '7', port: 6379, user: false, password: true, database: false },
+  sqlite: { user: false, password: false, database: false },
+};
+
+/** Only ask what applies to this database type, with defaults that are valid for it. */
+export function databasePrompts(type: Database['type']): prompts.PromptObject[] {
+  const d = DATABASE_DEFAULTS[type];
+  const list: prompts.PromptObject[] = [
+    { type: 'text', name: 'name', message: 'Name for this database (optional)', initial: 'db' },
+  ];
+  if (d.version) {
+    list.push({ type: 'text', name: 'version', message: `Version (e.g. ${d.version})`, initial: d.version });
+  }
+  if (d.port !== undefined) {
+    list.push({ type: 'number', name: 'port', message: 'Port', initial: d.port });
+  }
+  if (d.user) {
+    list.push({ type: 'text', name: 'user', message: 'User (use ${DB_USER} for .env)', initial: '${DB_USER}' });
+  }
+  if (d.password) {
+    list.push({ type: 'text', name: 'password', message: 'Password (use ${DB_PASSWORD} for .env)', initial: '${DB_PASSWORD}' });
+  }
+  if (d.database) {
+    list.push({ type: 'text', name: 'database', message: 'Database name', initial: 'myapp' });
+  }
+  if (type === 'sqlite') {
+    list.push({ type: 'text', name: 'database', message: 'Database file path', initial: './dev.sqlite3' });
+  }
+  return list;
+}
+
+interface ServiceDefaults {
+  version?: string;
+  port?: number;
+  managementPort?: number;
+}
+
+/** Defaults for well-known services; anything else starts with no pre-filled version or port. */
+export const SERVICE_DEFAULTS: Record<string, ServiceDefaults> = {
+  rabbitmq: { version: '3.12', port: 5672, managementPort: 15672 },
+  redis: { version: '7', port: 6379 },
+  memcached: { version: '1.6', port: 11211 },
+};
+
+export function servicePrompts(defaults: ServiceDefaults): prompts.PromptObject[] {
+  const list: prompts.PromptObject[] = [
+    { type: 'text', name: 'version', message: 'Version', initial: defaults.version },
+    { type: 'number', name: 'port', message: 'Port', initial: defaults.port },
+  ];
+  if (defaults.managementPort !== undefined) {
+    list.push({
+      type: 'number',
+      name: 'management_port',
+      message: 'Management port (optional, 0 to skip)',
+      initial: defaults.managementPort,
+    });
+  }
+  return list;
+}
+
 export async function getDefaultProjectName(projectRoot: string): Promise<string> {
   const pkgPath = path.join(projectRoot, 'package.json');
   if (await fileExists(pkgPath)) {
@@ -139,20 +214,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     );
     if (dbChoice.type === 'none') break;
 
-    const DB_DEFAULT_PORTS: Record<string, number> = {
-      postgresql: 5432, mysql: 3306, mariadb: 3306, mongodb: 27017, redis: 6379, sqlite: 0,
-    };
-    const dbPrompts: prompts.PromptObject[] = [
-      { type: 'text', name: 'name', message: 'Database name (optional)', initial: 'db' },
-      { type: 'text', name: 'version', message: 'Version (e.g. 15 for Postgres)', initial: '15' },
-      { type: 'number', name: 'port', message: 'Port', initial: DB_DEFAULT_PORTS[dbChoice.type] ?? 5432 },
-      { type: 'text', name: 'user', message: 'User (use ${DB_USER} for .env)', initial: '${DB_USER}' },
-      { type: 'text', name: 'password', message: 'Password (use ${DB_PASSWORD} for .env)', initial: '${DB_PASSWORD}' },
-    ];
-    if (dbChoice.type !== 'redis' && dbChoice.type !== 'sqlite') {
-      dbPrompts.push({ type: 'text', name: 'database', message: 'Database name', initial: 'myapp' });
-    }
-    const dbAnswers = await prompts(dbPrompts, { onCancel: exitOnCancel });
+    const dbAnswers = await prompts(databasePrompts(dbChoice.type as Database['type']), { onCancel: exitOnCancel });
     const db: Database = {
       type: dbChoice.type as Database['type'],
       name: dbAnswers.name || undefined,
@@ -207,15 +269,13 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     );
     if (!addService.value) break;
 
-    const svc = await prompts(
-      [
-        { type: 'text', name: 'type', message: 'Service type', initial: 'rabbitmq' },
-        { type: 'text', name: 'version', message: 'Version', initial: '3.12' },
-        { type: 'number', name: 'port', message: 'Port', initial: 5672 },
-        { type: 'number', name: 'management_port', message: 'Management port (optional, 0 to skip)', initial: 15672 },
-      ],
+    const svcType = await prompts(
+      { type: 'text', name: 'type', message: 'Service type (e.g. rabbitmq, redis)', initial: 'rabbitmq' },
       { onCancel: exitOnCancel }
     );
+    const svcDefaults = SERVICE_DEFAULTS[svcType.type?.trim().toLowerCase()] ?? {};
+    const svcDetails = await prompts(servicePrompts(svcDefaults), { onCancel: exitOnCancel });
+    const svc: Record<string, any> = { ...svcType, ...svcDetails };
     if (svc.type?.trim()) {
       services.push({
         type: svc.type.trim(),
@@ -290,4 +350,40 @@ export async function runInit(projectRoot: string): Promise<void> {
   const yamlContent = yaml.dump(config, { lineWidth: -1 });
   await writeFile(configPath, yamlContent);
   logger.success(`Created ${configPath}`);
+
+  await offerEnvExample(projectRoot, yamlContent);
+}
+
+/** Names of the `${VAR}` references in a config, in order of first use. */
+export function referencedVariables(configText: string): string[] {
+  const names = new Set<string>();
+  for (const match of configText.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) names.add(match[1]);
+  return [...names];
+}
+
+/**
+ * The wizard writes `${DB_USER}`-style references, so the first `envkit setup` would warn about
+ * unset variables. Offer a `.env.example` that lists them (never overwriting an existing one).
+ */
+async function offerEnvExample(projectRoot: string, configText: string): Promise<void> {
+  const variables = referencedVariables(configText);
+  const examplePath = path.join(projectRoot, '.env.example');
+  if (variables.length === 0 || (await fileExists(examplePath))) return;
+
+  const answer = await prompts(
+    {
+      type: 'confirm',
+      name: 'value',
+      message: `Create .env.example listing the ${variables.length} variable(s) this config uses?`,
+      initial: true,
+    },
+    { onCancel: exitOnCancel }
+  );
+  if (!answer.value) {
+    logger.info(`Define these variables in .env before running envkit setup: ${variables.join(', ')}`);
+    return;
+  }
+  await writeFile(examplePath, variables.map((name) => `${name}=`).join('\n') + '\n');
+  logger.success(`Created ${examplePath}`);
+  logger.info('Copy it to .env and fill in the values (keep .env out of version control).');
 }
