@@ -10,6 +10,7 @@ describe('init wizard (runInit)', () => {
   let tempDir: string;
   const originalCwd = process.cwd();
   const originalTTY = process.stdout.isTTY;
+  const originalStdinTTY = process.stdin.isTTY;
 
   beforeEach(async () => {
     jest.spyOn(logger, 'info').mockImplementation();
@@ -18,12 +19,14 @@ describe('init wizard (runInit)', () => {
     jest.spyOn(logger, 'debug').mockImplementation();
     // Force interactive so runInit drives the wizard.
     process.stdout.isTTY = true;
+    process.stdin.isTTY = true;
     tempDir = path.join(require('os').tmpdir(), `devkit-initw-${Date.now()}-${Math.floor(performance.now())}`);
     await fs.ensureDir(tempDir);
   });
 
   afterEach(async () => {
     process.stdout.isTTY = originalTTY;
+    process.stdin.isTTY = originalStdinTTY;
     process.chdir(originalCwd);
     await fs.remove(tempDir).catch(() => {});
     jest.restoreAllMocks();
@@ -44,29 +47,50 @@ describe('init wizard (runInit)', () => {
     expect(parsed.docker?.enabled).toBe(true);
   });
 
-  it('captures a database with a health check from wizard answers', async () => {
-    // name, version, addDeps?, addDb?(yes), dbType, dbFields..., then addDb?(no) etc.
-    // db prompt sequence after type select: name, port, user, password, database, migrations?, seed?
-    // To stay robust we drive a redis DB which has the fewest follow-ups.
+  it('captures a service from wizard answers without writing inert options', async () => {
+    prompts.inject([
+      'svc-app', '1.0.0',
+      false,                                  // addDeps?
+      false,                                  // addDb?
+      true,                                   // addService?
+      'rabbitmq', '3.12', 5672, 15672,        // service: type, version, port, management port
+      false,                                  // addService? (stop)
+      false,                                  // addEnv?
+      false,                                  // dockerEnabled?
+    ]);
+
+    await runInit(tempDir);
+
+    const text = await fs.readFile(path.join(tempDir, '.dev-env.yml'), 'utf-8');
+    const parsed = DevEnvConfigSchema.parse(yaml.load(text));
+    expect(parsed.services?.[0]).toMatchObject({ type: 'rabbitmq', port: 5672, management_port: 15672 });
+    expect(text).not.toMatch(/^\s*host:/m);
+  });
+
+  it('captures a database from wizard answers without writing inert options', async () => {
+    // db prompt sequence after type select: name, version, port, user, password (redis: no database name)
     prompts.inject([
       'db-app', '1.0.0',
-      false,                                   // addDeps?
-      true, 'redis',                           // addDb? + type
-      'cache', '7', 6379, 'localhost', '', '', // db: name, version, port, host, user, password
-      false,                                   // add migrations?
-      false,                                   // add seed?
-      false,                                   // addDb? (stop)
-      false,                                   // addService?
-      false,                                   // addEnv?
-      false,                                   // dockerEnabled?
-      true,                                    // add health check?
+      false,                             // addDeps?
+      true, 'redis',                     // addDb? + type
+      'cache', '7', 6379, '',           // db: name, version, port, password (redis has no user)
+      false,                             // add migrations?
+      false,                             // add seed?
+      false,                             // addDb? (stop)
+      false,                             // addService?
+      false,                             // addEnv?
+      false,                             // dockerEnabled?
     ]);
 
     await runInit(tempDir);
 
     const configPath = path.join(tempDir, '.dev-env.yml');
-    const parsed = DevEnvConfigSchema.parse(yaml.load(await fs.readFile(configPath, 'utf-8')));
+    const text = await fs.readFile(configPath, 'utf-8');
+    const parsed = DevEnvConfigSchema.parse(yaml.load(text));
     expect(parsed.databases?.[0]?.type).toBe('redis');
-    expect(parsed.health_checks?.some((h) => h.type === 'redis')).toBe(true);
+    // options envkit does not use are no longer written
+    expect(text).not.toMatch(/^\s*host:/m);
+    expect(text).not.toMatch(/^snapshot:/m);
+    expect(text).not.toMatch(/connection_string|^\s*url:/m);
   });
 });

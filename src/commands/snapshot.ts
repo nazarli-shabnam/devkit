@@ -9,10 +9,12 @@ import {
   sanitizeSnapshotName,
   snapshotExists,
   uniqueSnapshotName,
+  reserveSnapshotName,
 } from '../core/snapshot/storage';
 import { isInteractive } from './init';
 import { fileExists, readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
+import { exitOnCancel } from '../utils/prompt';
 
 function timestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -92,7 +94,7 @@ export async function runSnapshotRestore(name: string, options: SnapshotRestoreO
         message: `This overwrites your current .dev-env.yml (a backup snapshot will be saved). Continue?`,
         initial: true,
       },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (!answer.value) {
       logger.info('Restore cancelled.');
@@ -105,7 +107,7 @@ export async function runSnapshotRestore(name: string, options: SnapshotRestoreO
     const currentYaml = await readFile(configPath);
     const backup = await createSnapshot(
       projectRoot,
-      await uniqueSnapshotName(projectRoot, `pre-restore-${timestamp()}`),
+      await reserveSnapshotName(projectRoot, `pre-restore-${timestamp()}`),
       currentYaml
     );
     logger.info(`Backed up current config to snapshot "${backup.name}".`);

@@ -31,7 +31,8 @@ export const DatabaseSchema = z.object({
   name: z.string().optional(),
   version: versionField().optional(),
   port: portField().optional(),
-  host: z.string().optional().default('localhost'),
+  /** Not used by envkit; accepted so existing configs keep loading. */
+  host: z.string().optional(),
   user: z.string().optional(),
   password: z.string().optional(),
   database: z.string().optional(),
@@ -51,7 +52,8 @@ export const ServiceSchema = z.object({
   type: z.string(),
   version: versionField().optional(),
   port: portField().optional(),
-  host: z.string().optional().default('localhost'),
+  /** Not used by envkit; accepted so existing configs keep loading. */
+  host: z.string().optional(),
   management_port: portField().optional(),
 });
 
@@ -60,7 +62,9 @@ export type Service = z.infer<typeof ServiceSchema>;
 export const HealthCheckSchema = z.object({
   name: z.string(),
   type: z.string(),
+  /** Not used by envkit; accepted so existing configs keep loading. */
   connection_string: z.string().optional(),
+  /** Not used by envkit; accepted so existing configs keep loading. */
   url: z.string().optional(),
   /** Optional raw shell command run as a Docker CMD-SHELL healthcheck test (used for generic services). */
   test: z.string().optional(),
@@ -71,6 +75,7 @@ export const HealthCheckSchema = z.object({
 
 export type HealthCheck = z.infer<typeof HealthCheckSchema>;
 
+/** Not used by envkit (snapshots copy .dev-env.yml only); accepted so existing configs keep loading. */
 export const SnapshotConfigSchema = z.object({
   include_databases: z.boolean().optional().default(true),
   include_volumes: z.boolean().optional().default(true),

@@ -4,10 +4,14 @@ import { checkConfigWarnings } from '../core/config/validator';
 import { generateComposeContent } from '../core/docker/compose-generator';
 import { logger } from '../utils/logger';
 import { writeFile } from '../utils/file-ops';
+import { assertRealPathInside, displayPath, isInsideDir, resolveOutputPath } from '../utils/paths';
+import { confirmOverwrite, generatedHeader } from '../utils/overwrite';
 
 export interface GenerateOptions {
   output?: string;
   dryRun?: boolean;
+  /** Overwrite an existing file that envkit did not generate. */
+  force?: boolean;
 }
 
 function getTemplatesDir(): string {
@@ -15,8 +19,6 @@ function getTemplatesDir(): string {
 }
 
 export async function runGenerate(options: GenerateOptions = {}): Promise<void> {
-  const outputFile = (options.output?.trim() || 'docker-compose.yml');
-
   const projectRoot = await findProjectRoot(process.cwd());
   logger.debug(`Project root: ${projectRoot}`);
 
@@ -28,15 +30,22 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
     return;
   }
 
-  if (!path.isAbsolute(outputFile)) {
-    const resolved = path.resolve(process.cwd(), outputFile);
-    if (!resolved.startsWith(process.cwd())) {
-      throw new Error(`Output path "${outputFile}" would write outside the working directory. Use an absolute path if intended.`);
+  // No --output: the config's docker.output_file, relative to the project root. It comes from a
+  // file that may have been shared by someone else, so it must stay inside the project.
+  // (`||`, not `??`: an empty string must fall back to the default instead of naming the project root.)
+  const configuredName = config.docker?.output_file?.trim() || 'docker-compose.yml';
+  if (!options.output?.trim()) {
+    const configuredPath = path.resolve(projectRoot, configuredName);
+    if (path.isAbsolute(configuredName) || !isInsideDir(configuredPath, projectRoot)) {
+      throw new Error(`docker.output_file "${configuredName}" must be a path inside the project. Use --output to write elsewhere.`);
     }
+    // ...and a symlinked directory inside the project must not redirect the write out of it.
+    assertRealPathInside(configuredPath, projectRoot, `docker.output_file "${configuredName}"`);
   }
+  const outPath = resolveOutputPath(options.output, configuredName, projectRoot);
 
   const templatesDir = getTemplatesDir();
-  const content = generateComposeContent(config, templatesDir);
+  const content = generatedHeader('docker compose') + generateComposeContent(config, templatesDir);
 
   if (options.dryRun) {
     // Print to stdout without writing, so it can be inspected or piped.
@@ -44,8 +53,11 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
     return;
   }
 
-  const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);
+  if (!(await confirmOverwrite(outPath, { force: options.force, displayName: displayPath(outPath), regenerable: true }))) {
+    logger.info('Cancelled. The existing file was left unchanged.');
+    return;
+  }
 
   await writeFile(outPath, content);
-  logger.success(`Wrote ${outputFile}`);
+  logger.success(`Wrote ${displayPath(outPath)}`);
 }

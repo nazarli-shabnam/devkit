@@ -4,13 +4,9 @@ import { findProjectRoot, loadConfigOrPromptInit, loadRawConfig } from '../core/
 import { DevEnvConfig, DevEnvConfigSchema } from '../types/config';
 import { fileExists, readFile, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
-
-function validateOutputPath(outPath: string, baseDir: string): void {
-  const resolved = path.resolve(baseDir, outPath);
-  if (!resolved.startsWith(baseDir)) {
-    throw new Error(`Output path "${outPath}" would write outside the working directory. Use an absolute path if intended.`);
-  }
-}
+import { displayPath, resolveOutputPath, resolveThroughSymlinks } from '../utils/paths';
+import { confirmOverwrite, generatedHeader } from '../utils/overwrite';
+import { createSnapshot, reserveSnapshotName } from '../core/snapshot/storage';
 
 
 export function sanitizeConfigForShare(config: DevEnvConfig): DevEnvConfig {
@@ -81,6 +77,8 @@ export function restoreReferences(resolved: unknown, raw: unknown): unknown {
 
 export interface ShareExportOptions {
   output?: string;
+  /** Overwrite an existing file that envkit did not generate. */
+  force?: boolean;
 }
 
 export async function runShareExport(options: ShareExportOptions = {}): Promise<void> {
@@ -92,22 +90,23 @@ export async function runShareExport(options: ShareExportOptions = {}): Promise<
   const withReferences = restoreReferences(config, await loadRawConfig(projectRoot)) as DevEnvConfig;
 
   const sanitized = sanitizeConfigForShare(withReferences);
-  const yamlContent = yaml.dump(sanitized, { lineWidth: -1 });
+  const yamlContent = generatedHeader('envkit share export') + yaml.dump(sanitized, { lineWidth: -1 });
 
-  const outputFile = (options.output?.trim() || 'dev-env.shared.yml');
-  const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);
-
-  if (!path.isAbsolute(outputFile)) {
-    validateOutputPath(outputFile, process.cwd());
+  const outPath = resolveOutputPath(options.output, 'dev-env.shared.yml', projectRoot);
+  if (!(await confirmOverwrite(outPath, { force: options.force, displayName: displayPath(outPath), regenerable: true }))) {
+    logger.info('Cancelled. The existing file was left unchanged.');
+    return;
   }
 
   await writeFile(outPath, yamlContent);
-  logger.success(`Exported sanitized config to ${outputFile}`);
+  logger.success(`Exported sanitized config to ${displayPath(outPath)}`);
 }
 
 export interface ShareImportOptions {
   output?: string;
   validateOnly?: boolean;
+  /** Overwrite an existing target without asking (a backup of the project config is still saved). */
+  force?: boolean;
 }
 
 export async function runShareImport(filePath: string, options: ShareImportOptions = {}): Promise<void> {
@@ -137,14 +136,28 @@ export async function runShareImport(filePath: string, options: ShareImportOptio
     return;
   }
 
-  const outputFile = (options.output?.trim() || '.dev-env.yml');
-  const outPath = path.isAbsolute(outputFile) ? outputFile : path.join(process.cwd(), outputFile);
+  const projectRoot = await findProjectRoot(process.cwd());
+  const outPath = resolveOutputPath(options.output, '.dev-env.yml', projectRoot);
 
-  if (!path.isAbsolute(outputFile)) {
-    validateOutputPath(outputFile, process.cwd());
+  if (!(await confirmOverwrite(outPath, { force: options.force, displayName: displayPath(outPath) }))) {
+    logger.info('Cancelled. The existing file was left unchanged.');
+    return;
+  }
+  // Importing replaces the project config; keep what was there recoverable via `snapshot restore`.
+  // (path.relative compares like the filesystem does, e.g. case-insensitively on Windows)
+  // (compared through symlinks, so an alias of .dev-env.yml is backed up too)
+  const projectConfig = path.join(projectRoot, '.dev-env.yml');
+  if (path.relative(resolveThroughSymlinks(projectConfig), resolveThroughSymlinks(outPath)) === '' && (await fileExists(outPath))) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const backup = await createSnapshot(
+      projectRoot,
+      await reserveSnapshotName(projectRoot, `pre-import-${stamp}`),
+      await readFile(outPath)
+    );
+    logger.info(`Backed up current config to snapshot "${backup.name}".`);
   }
 
   const yamlContent = yaml.dump(parsed.data, { lineWidth: -1 });
   await writeFile(outPath, yamlContent);
-  logger.success(`Imported config to ${outputFile}`);
+  logger.success(`Imported config to ${displayPath(outPath)}`);
 }

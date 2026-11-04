@@ -18,7 +18,6 @@ databases:
     name: myapp_db
     version: "15"
     port: 5432
-    host: localhost
     user: ${DB_USER}  # Use environment variable
     password: ${DB_PASSWORD}  # Use environment variable
     database: myapp
@@ -32,7 +31,6 @@ databases:
   # - type: redis
   #   version: "7"
   #   port: 6379
-  #   host: localhost
 
 services:
   # - type: rabbitmq
@@ -48,31 +46,15 @@ env:
   DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/myapp
   # REDIS_URL: redis://localhost:6379
 
-# Health checks to verify setup
-health_checks:
-  - name: database
-    type: postgresql
-    connection_string: postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/myapp
-  # - name: redis
-  #   type: redis
-  #   url: redis://localhost:6379
-  # Generic (non-database) services can define a raw healthcheck command with `test`:
-  # - name: rabbitmq_1        # matches the generated service name, or use type
-  #   type: rabbitmq
-  #   test: rabbitmq-diagnostics -q ping
-  #   interval: 30s
-  #   timeout: 10s
-  #   retries: 5
-
-# Snapshot configuration
-snapshot:
-  include_databases: true
-  include_volumes: true
-  exclude_paths:
-    - node_modules
-    - .git
-    - dist
-    - build
+# Container healthchecks. Databases get a sensible default automatically; add an entry to tune
+# interval/timeout/retries, or give any service a custom check with `test`:
+# health_checks:
+#   - name: rabbitmq_1        # the generated service name (or match by type)
+#     type: rabbitmq
+#     test: rabbitmq-diagnostics -q ping
+#     interval: 30s
+#     timeout: 10s
+#     retries: 5
 
 # Docker Compose generation
 docker:

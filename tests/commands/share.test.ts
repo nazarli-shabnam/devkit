@@ -221,7 +221,7 @@ describe('share command', () => {
       await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: original');
       process.chdir(tempDir);
 
-      await runShareImport(sharedPath, { output: '.dev-env.yml' });
+      await runShareImport(sharedPath, { output: '.dev-env.yml', force: true });
 
       const content = await fs.readFile(path.join(tempDir, '.dev-env.yml'), 'utf-8');
       expect(content).toMatch(/name:\s*imported/);

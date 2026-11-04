@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import prompts from 'prompts';
 import { detectOS, getHomeDirectory, getTempDirectory } from '../utils/platform';
 import { logger } from '../utils/logger';
+import { exitOnCancel } from '../utils/prompt';
 import { isInteractive } from './init';
 
 /**
@@ -120,7 +121,7 @@ export async function runPathSetup(): Promise<void> {
       message: `Add envkit to your PATH?\n  ${binPath}\n\nThis lets you run "envkit" from any folder. (y/n)`,
       initial: true,
     },
-    { onCancel: () => process.exit(0) }
+    { onCancel: exitOnCancel }
   );
 
   if (!agree) {
