@@ -19,32 +19,71 @@ export async function loadEnvFile(projectRoot: string): Promise<void> {
   }
 }
 
+// `$${VAR}` (escape) | `${VAR}` / `${VAR:-default}`
+const ENV_REFERENCE = /\$\$\{([^}]*)\}|\$\{([^}]+)\}/g;
+
+/**
+ * Expand `${VAR}` references in a single pass.
+ *
+ * - `${VAR:-default}` uses `default` when VAR is unset or empty (the default is literal text; nested `${...}` inside it is not supported).
+ * - `$${VAR}` is an escape and yields the literal text `${VAR}`.
+ * - Names defined in `env` (the config's own `env:` block) are expanded recursively, so they can
+ *   reference each other. A reference to a name that is already being expanded (e.g.
+ *   `PATH: ${PATH}:/extra` or `TOKEN: ${TOKEN}`) means the ambient value, as in a shell, so
+ *   definitions can never recurse forever.
+ * - Values coming from the process environment (e.g. `.env`) are inserted verbatim and never
+ *   re-expanded, so a secret that happens to contain `${...}` is not mangled.
+ */
 export function resolveEnvVars(
   value: string,
   env: Record<string, string> = {},
   unresolved?: Set<string>
 ): string {
-  const mergedEnv = { ...process.env, ...env };
-  const MAX_DEPTH = 10;
+  const reportUnset = (name: string): void => {
+    if (unresolved) {
+      unresolved.add(name);
+    } else {
+      logger.warn(`Environment variable ${name} is not set`);
+    }
+  };
 
-  let result = value;
-  for (let depth = 0; depth < MAX_DEPTH; depth++) {
-    const prev = result;
-    result = result.replace(/\$\{([^}]+)\}/g, (match, varName) => {
-      const resolved = mergedEnv[varName];
-      if (resolved === undefined) {
-        if (unresolved) {
-          unresolved.add(varName);
-        } else {
-          logger.warn(`Environment variable ${varName} is not set`);
-        }
+  const expand = (text: string, stack: string[]): string =>
+    text.replace(ENV_REFERENCE, (match: string, escaped: string | undefined, reference: string) => {
+      if (escaped !== undefined) return '${' + escaped + '}';
+
+      const separator = reference.indexOf(':-');
+      const name = separator === -1 ? reference : reference.slice(0, separator);
+      const fallback = separator === -1 ? undefined : reference.slice(separator + 2);
+
+      const defined = Object.prototype.hasOwnProperty.call(env, name) && !stack.includes(name);
+      const resolved: string | undefined = defined ? expand(env[name], [...stack, name]) : process.env[name];
+
+      if (resolved === undefined || (fallback !== undefined && resolved === '')) {
+        if (fallback !== undefined) return fallback;
+        reportUnset(name);
         return match;
       }
       return resolved;
     });
-    if (result === prev) break; // no more substitutions
+
+  return expand(value, []);
+}
+
+/**
+ * The string values of the config's own `env:` block. ${VAR} references elsewhere in the
+ * file (including inside other env values) may point at these. An entry that refers to its own
+ * name (`TOKEN: ${TOKEN}`, `PATH: ${PATH}:/extra`) is a pass-through from the ambient
+ * environment, so it is left out and resolves from `.env`/the shell as it always did.
+ */
+function extractLocalEnv(rawConfig: unknown): Record<string, string> {
+  const localEnv: Record<string, string> = {};
+  const envBlock = (rawConfig as { env?: unknown } | null | undefined)?.env;
+  if (envBlock && typeof envBlock === 'object') {
+    for (const [k, v] of Object.entries(envBlock)) {
+      if (typeof v === 'string' && !v.includes('${' + k + '}')) localEnv[k] = v;
+    }
   }
-  return result;
+  return localEnv;
 }
 
 /**
@@ -54,12 +93,7 @@ export function resolveEnvVars(
  */
 export function findUnresolvedVars(rawConfig: any): string[] {
   const unresolved = new Set<string>();
-  const localEnv: Record<string, string> = {};
-  if (rawConfig && typeof rawConfig === 'object' && rawConfig.env && typeof rawConfig.env === 'object') {
-    for (const [k, v] of Object.entries(rawConfig.env)) {
-      if (typeof v === 'string') localEnv[k] = v;
-    }
-  }
+  const localEnv = extractLocalEnv(rawConfig);
 
   const walk = (obj: any): void => {
     if (typeof obj === 'string') {
@@ -73,6 +107,15 @@ export function findUnresolvedVars(rawConfig: any): string[] {
   walk(rawConfig);
 
   return [...unresolved];
+}
+
+/**
+ * Read .dev-env.yml exactly as written (no ${VAR} resolution, no schema defaults).
+ * Used to tell secrets that come from ${VAR} apart from literals typed into the file.
+ */
+export async function loadRawConfig(projectRoot: string = process.cwd()): Promise<unknown> {
+  const content = await readFile(path.join(projectRoot, '.dev-env.yml'));
+  return yaml.load(content, { schema: yaml.DEFAULT_SCHEMA });
 }
 
 export async function loadConfig(projectRoot: string = process.cwd()): Promise<DevEnvConfig> {
@@ -91,7 +134,7 @@ export async function loadConfig(projectRoot: string = process.cwd()): Promise<D
     const content = await readFile(configPath);
     const rawConfig = yaml.load(content, { schema: yaml.DEFAULT_SCHEMA }) as any;
 
-    const resolvedConfig = resolveEnvVarsInConfig(rawConfig);
+    const resolvedConfig = resolveEnvVarsInConfig(rawConfig, extractLocalEnv(rawConfig));
 
     const config = DevEnvConfigSchema.parse(resolvedConfig);
 
@@ -124,10 +167,18 @@ export async function loadConfig(projectRoot: string = process.cwd()): Promise<D
  * Load config, or (when missing) offer to run `envkit init` in interactive terminals.
  *
  * - If `.dev-env.yml` exists: behaves like `loadConfig`.
- * - If missing and not a TTY: throws with a message suggesting `envkit init`.
+ * - If missing and not a TTY (or `offerInit: false`): throws with a message suggesting `envkit init`.
  * - If missing and TTY: prompts the user to run init now; on yes, runs init then loads.
  */
-export async function loadConfigOrPromptInit(projectRoot: string = process.cwd()): Promise<DevEnvConfig> {
+export interface LoadOrInitOptions {
+  /** Offer to run `envkit init` when there is no config (default: true). Dry runs turn this off: they must not write files. */
+  offerInit?: boolean;
+}
+
+export async function loadConfigOrPromptInit(
+  projectRoot: string = process.cwd(),
+  options: LoadOrInitOptions = {}
+): Promise<DevEnvConfig> {
   const configPath = path.join(projectRoot, '.dev-env.yml');
   const exists = await fileExists(configPath);
   if (exists) return loadConfig(projectRoot);
@@ -136,7 +187,7 @@ export async function loadConfigOrPromptInit(projectRoot: string = process.cwd()
     `Configuration file not found: ${configPath}\n` +
     `Run \`envkit init\` to create one, or create a .dev-env.yml file in your project root.`;
 
-  if (!process.stdout.isTTY) {
+  if (options.offerInit === false || !process.stdout.isTTY) {
     throw new Error(baseMsg);
   }
 
@@ -174,15 +225,15 @@ export async function loadConfigOrPromptInit(projectRoot: string = process.cwd()
   return loadConfig(projectRoot);
 }
 
-function resolveEnvVarsInConfig(obj: any): any {
+function resolveEnvVarsInConfig(obj: any, localEnv: Record<string, string>): any {
   if (typeof obj === 'string') {
-    return resolveEnvVars(obj);
+    return resolveEnvVars(obj, localEnv);
   } else if (Array.isArray(obj)) {
-    return obj.map(item => resolveEnvVarsInConfig(item));
+    return obj.map(item => resolveEnvVarsInConfig(item, localEnv));
   } else if (obj !== null && typeof obj === 'object') {
     const resolved: any = {};
     for (const [key, value] of Object.entries(obj)) {
-      resolved[key] = resolveEnvVarsInConfig(value);
+      resolved[key] = resolveEnvVarsInConfig(value, localEnv);
     }
     return resolved;
   }

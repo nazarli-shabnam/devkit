@@ -19,6 +19,17 @@ export function getSnapshotDir(projectRoot: string): string {
   return path.join(projectRoot, SNAPSHOT_DIR_NAME, SNAPSHOTS_SUBDIR);
 }
 
+export async function snapshotExists(projectRoot: string, name: string): Promise<boolean> {
+  return fileExists(path.join(getSnapshotDir(projectRoot), sanitizeSnapshotName(name)));
+}
+
+/** `base`, or `base-2`, `base-3`, ... - the first name no snapshot uses yet. */
+export async function uniqueSnapshotName(projectRoot: string, base: string): Promise<string> {
+  let candidate = base;
+  for (let n = 2; await snapshotExists(projectRoot, candidate); n++) candidate = `${base}-${n}`;
+  return candidate;
+}
+
 export async function createSnapshot(
   projectRoot: string,
   name: string,
