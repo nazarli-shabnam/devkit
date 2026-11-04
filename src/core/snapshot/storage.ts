@@ -30,6 +30,26 @@ export async function uniqueSnapshotName(projectRoot: string, base: string): Pro
   return candidate;
 }
 
+/**
+ * Claim a free snapshot name atomically: `base`, else `base-2`, `base-3`, ... The directory is
+ * created with a non-recursive mkdir, which fails with EEXIST if anyone (another envkit process, or
+ * a concurrent call in this one) got there first, so two callers can never pick the same name.
+ * Use it for automatic backups, where overwriting an earlier snapshot would lose real data.
+ */
+export async function reserveSnapshotName(projectRoot: string, base: string): Promise<string> {
+  const dir = getSnapshotDir(projectRoot);
+  await ensureDir(dir);
+  for (let n = 1; ; n++) {
+    const candidate = n === 1 ? base : `${base}-${n}`;
+    try {
+      await fs.mkdir(path.join(dir, sanitizeSnapshotName(candidate)));
+      return candidate;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    }
+  }
+}
+
 export async function createSnapshot(
   projectRoot: string,
   name: string,

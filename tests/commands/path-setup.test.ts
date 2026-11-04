@@ -109,6 +109,8 @@ describe('path-setup command', () => {
     const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean };
     const origTTY = stdout.isTTY;
     stdout.isTTY = true;
+    const origStdinTTY = process.stdin.isTTY;
+    process.stdin.isTTY = true;
 
     jest.mocked(prompts as any).mockResolvedValueOnce({ value: false });
 
@@ -117,6 +119,7 @@ describe('path-setup command', () => {
       expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('Skipped'));
     } finally {
       stdout.isTTY = origTTY;
+      process.stdin.isTTY = origStdinTTY;
     }
   });
 });

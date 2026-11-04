@@ -4,9 +4,11 @@ import * as dotenv from 'dotenv';
 import prompts from 'prompts';
 import { fileExists, readFile } from '../../utils/file-ops';
 import { logger } from '../../utils/logger';
+import { exitOnCancel, isInteractive } from '../../utils/prompt';
 import { DevEnvConfig, DevEnvConfigSchema } from '../../types/config';
 import { resolvePath } from '../../utils/platform';
 import { runInit } from '../../commands/init';
+import { findUnknownKeys, formatUnknownKey } from './unknown-keys';
 
 export async function loadEnvFile(projectRoot: string): Promise<void> {
   const envPath = path.join(projectRoot, '.env');
@@ -134,9 +136,24 @@ export async function loadConfig(projectRoot: string = process.cwd()): Promise<D
     const content = await readFile(configPath);
     const rawConfig = yaml.load(content, { schema: yaml.DEFAULT_SCHEMA }) as any;
 
+    // Say what is wrong with the file itself, not a bare schema error for the root.
+    if (rawConfig === undefined || rawConfig === null) {
+      throw new Error(`${configPath} is empty. Add at least a name, for example:\n  name: my-project`);
+    }
+    if (typeof rawConfig !== 'object' || Array.isArray(rawConfig)) {
+      throw new Error(
+        `${configPath} must be a mapping of settings (name: ..., dependencies: ...), ` +
+        `not a ${Array.isArray(rawConfig) ? 'list' : 'single value'}.`
+      );
+    }
+
     const resolvedConfig = resolveEnvVarsInConfig(rawConfig, extractLocalEnv(rawConfig));
 
     const config = DevEnvConfigSchema.parse(resolvedConfig);
+
+    for (const unknownKey of findUnknownKeys(rawConfig)) {
+      logger.warn(formatUnknownKey(unknownKey));
+    }
 
     logger.debug(`Loaded configuration from ${configPath}`);
     return config;
@@ -145,7 +162,7 @@ export async function loadConfig(projectRoot: string = process.cwd()): Promise<D
       const issues = error.issues.map((issue: any) => 
         `  - ${issue.path.join('.')}: ${issue.message}`
       ).join('\n');
-      
+
       throw new Error(
         `Invalid configuration file:\n${issues}\n` +
         `Please check your .dev-env.yml file.`
@@ -187,7 +204,7 @@ export async function loadConfigOrPromptInit(
     `Configuration file not found: ${configPath}\n` +
     `Run \`envkit init\` to create one, or create a .dev-env.yml file in your project root.`;
 
-  if (options.offerInit === false || !process.stdout.isTTY) {
+  if (options.offerInit === false || !isInteractive()) {
     throw new Error(baseMsg);
   }
 
@@ -209,11 +226,7 @@ export async function loadConfigOrPromptInit(
         return 'Please answer y (yes) or n (no)';
       },
     },
-    {
-      onCancel: () => {
-        process.exit(0);
-      },
-    }
+    { onCancel: exitOnCancel }
   );
 
   const runInitNow = answer?.value === true;
@@ -240,26 +253,39 @@ function resolveEnvVarsInConfig(obj: any, localEnv: Record<string, string>): any
   return obj;
 }
 
-export async function findProjectRoot(startPath: string = process.cwd()): Promise<string> {
-  let currentPath = resolvePath(startPath);
+const PROJECT_MARKERS = ['package.json', 'requirements.txt', 'Cargo.toml', 'go.mod'];
+
+/** Directories from `start` up to (excluding) the filesystem root. */
+function* ancestors(start: string): Generator<string> {
+  let currentPath = resolvePath(start);
   const root = path.parse(currentPath).root;
-
   while (currentPath !== root) {
-    const configPath = path.join(currentPath, '.dev-env.yml');
-    
-    if (await fileExists(configPath)) {
-      return currentPath;
-    }
+    yield currentPath;
+    currentPath = path.dirname(currentPath);
+  }
+}
 
-    const markers = ['package.json', 'requirements.txt', 'Cargo.toml', 'go.mod'];
-    for (const marker of markers) {
-      const markerPath = path.join(currentPath, marker);
-      if (await fileExists(markerPath)) {
-        return currentPath;
+/**
+ * Find the project root for a command run from `startPath`.
+ *
+ * An existing `.dev-env.yml` anywhere up the tree wins, so in a monorepo a sub-package's own
+ * `package.json` does not hide the repo-level config. Only when no config exists in any ancestor
+ * does the nearest project marker (package.json, requirements.txt, ...) decide, which is where
+ * `envkit init` will create one.
+ */
+export async function findProjectRoot(startPath: string = process.cwd()): Promise<string> {
+  for (const dir of ancestors(startPath)) {
+    if (await fileExists(path.join(dir, '.dev-env.yml'))) {
+      return dir;
+    }
+  }
+
+  for (const dir of ancestors(startPath)) {
+    for (const marker of PROJECT_MARKERS) {
+      if (await fileExists(path.join(dir, marker))) {
+        return dir;
       }
     }
-
-    currentPath = path.dirname(currentPath);
   }
 
   return process.cwd();

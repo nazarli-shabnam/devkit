@@ -48,13 +48,13 @@ describe('share command', () => {
       expect(out.databases![0].database).toBe('mydb');
     });
 
-    it('replaces env values with variable placeholders', () => {
+    it('masks secret-looking env values and keeps ordinary ones', () => {
       const config = {
         name: 'test',
         env: { API_KEY: 'sk-secret', PORT: '3000' },
       };
       const out = sanitizeConfigForShare(config as any);
-      expect(out.env).toEqual({ API_KEY: '${API_KEY}', PORT: '${PORT}' });
+      expect(out.env).toEqual({ API_KEY: '${API_KEY}', PORT: '3000' });
     });
 
     it('leaves databases without password unchanged except user placeholder', () => {
@@ -79,8 +79,9 @@ describe('share command', () => {
       };
       const out = sanitizeConfigForShare(config as any);
       expect(out.health_checks).toHaveLength(2);
-      expect(out.health_checks![0].connection_string).toBe('${CONNECTION_STRING}');
-      expect(out.health_checks![1].url).toBe('${HEALTH_CHECK_URL}');
+      // two health checks: placeholders are unique per check so they cannot collide
+      expect(out.health_checks![0].connection_string).toBe('${DB_CONNECTION_STRING}');
+      expect(out.health_checks![1].url).toBe('${API_URL}');
     });
 
     it('leaves health_checks url without credentials unchanged', () => {
@@ -221,7 +222,7 @@ describe('share command', () => {
       await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: original');
       process.chdir(tempDir);
 
-      await runShareImport(sharedPath, { output: '.dev-env.yml' });
+      await runShareImport(sharedPath, { output: '.dev-env.yml', force: true });
 
       const content = await fs.readFile(path.join(tempDir, '.dev-env.yml'), 'utf-8');
       expect(content).toMatch(/name:\s*imported/);

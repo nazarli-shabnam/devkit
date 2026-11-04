@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
+import { findProjectRoot, loadConfigOrPromptInit, loadRawConfig } from '../core/config/loader';
 import { checkConfigWarnings } from '../core/config/validator';
 import type { DevEnvConfig, Dependency } from '../types/config';
 import { logger } from '../utils/logger';
@@ -74,7 +74,7 @@ export async function runSetup(options: SetupOptions = {}): Promise<void> {
   logger.debug(`Project root: ${projectRoot}`);
 
   const config: DevEnvConfig = await loadConfigOrPromptInit(projectRoot, { offerInit: !dryRun });
-  checkConfigWarnings(config);
+  checkConfigWarnings(config, (await loadRawConfig(projectRoot)) as DevEnvConfig);
 
   const env = config.env ?? {};
 

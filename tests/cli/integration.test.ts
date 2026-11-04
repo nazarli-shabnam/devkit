@@ -218,7 +218,7 @@ describe('CLI integration', () => {
     const shared = 'name: imported-app\nversion: "3.0.0"\ndatabases:\n  - type: redis\n    port: 6379';
     fs.writeFileSync(path.join(tempDir, 'shared.yml'), shared);
     try {
-      const out = runCli(['share', 'import', 'shared.yml'], tempDir);
+      const out = runCli(['share', 'import', 'shared.yml', '--force'], tempDir);
       expect(out).toMatch(/Imported|\.dev-env\.yml/);
       const content = fs.readFileSync(path.join(tempDir, '.dev-env.yml'), 'utf-8');
       expect(content).toMatch(/name:\s*imported-app|imported-app/);
@@ -300,7 +300,7 @@ describe('CLI integration', () => {
       runCli(['share', 'export', '-o', 'roundtrip-shared.yml'], tempDir);
       expect(fs.pathExistsSync(path.join(tempDir, 'roundtrip-shared.yml'))).toBe(true);
       fs.writeFileSync(path.join(tempDir, '.dev-env.yml'), 'name: overwritten');
-      runCli(['share', 'import', 'roundtrip-shared.yml', '-o', '.dev-env.yml'], tempDir);
+      runCli(['share', 'import', 'roundtrip-shared.yml', '-o', '.dev-env.yml', '--force'], tempDir);
       const imported = fs.readFileSync(path.join(tempDir, '.dev-env.yml'), 'utf-8');
       expect(imported).toMatch(/name:\s*roundtrip-app|roundtrip-app/);
       expect(imported).toMatch(/postgresql|5432/);
@@ -379,7 +379,7 @@ describe('CLI integration', () => {
       const content = fs.readFileSync(path.join(tempDir, 'docker-compose.yml'), 'utf-8');
       expect(content).toContain('healthcheck:');
       expect(content).toMatch(/pg_isready|redis-cli|ping/);
-      expect(content).toContain('interval: 10s');
+      expect(content).toContain('interval: "10s"');
     } finally {
       fs.removeSync(tempDir);
     }
