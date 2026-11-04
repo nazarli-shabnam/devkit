@@ -123,6 +123,14 @@ describe('share sanitizer hardening', () => {
       }
     });
 
+    it('only a value that is exactly one URL is vouched for (nothing after it)', () => {
+      const value = 'https://ok.example/health Authorization: Bearer abc123';
+      const out = sanitize({ health_checks: [{ name: 'a', type: 'http', url: value }] });
+      // text after the URL means it is not "just a URL": the Bearer token must not survive
+      expect(out.health_checks[0].url).not.toContain('abc123');
+      expect(sanitize({ env: { HDR: 'https://ok.example/x token=abc' } }).env).toEqual({ HDR: '${HDR}' });
+    });
+
     it('every URL in a value is judged, not just the first', () => {
       const value = 'http://ok.example/a http://u:pw@h/b';
       expect(sanitize({ env: { URLS: value } }).env).toEqual({ URLS: '${URLS}' });

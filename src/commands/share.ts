@@ -76,7 +76,7 @@ function hasLiteralCredentials(value: string): boolean | undefined {
   // Finding a URL *inside* other text (`Server=h;Password=x;Url=http://ok/`) proves nothing about
   // the text around it, so only a value that really is a (possibly `jdbc:`-prefixed) URL is vouched
   // for. Anything else is an unknown format and callers treat it conservatively.
-  return /^(?:[A-Za-z][A-Za-z0-9+.-]*:)+\/\//.test(value.trimStart()) ? false : undefined;
+  return /^(?:[A-Za-z][A-Za-z0-9+.-]*:)+\/\/\S*$/.test(value.trim()) ? false : undefined;
 }
 
 /** Credentials embedded in free-form text: `user:pass@host` or `password=...` style pairs. */
@@ -139,11 +139,13 @@ export function sanitizeConfigForShare(config: DevEnvConfig): DevEnvConfig {
       const infix = healthCheckIds.length > 0 ? `${healthCheckIds[index]}_` : '';
       if (connection_string) {
         // Non-URL formats (e.g. "Server=x;Password=y") cannot be inspected, so they are always masked.
-        const literal = hasLiteralCredentials(connection_string) ?? true;
+        const literal = (hasLiteralCredentials(connection_string) ?? true) || looksLikeEmbeddedCredentials(connection_string);
         sanitized.connection_string = literal ? `\${${infix}CONNECTION_STRING}` : connection_string;
       }
       if (url) {
-        const literal = hasLiteralCredentials(url) ?? (url.includes('@') || looksLikeEmbeddedCredentials(url));
+        // undefined = not exactly one URL: free text around a URL ("... Authorization: Bearer x") or no
+        // URL at all. A URL mixed into text cannot be judged, so it is masked.
+        const literal = (hasLiteralCredentials(url) ?? (url.includes('@') || url.includes('://'))) || looksLikeEmbeddedCredentials(url);
         sanitized.url = literal ? `\${${infix || 'HEALTH_CHECK_'}URL}` : url;
       }
       return sanitized;
