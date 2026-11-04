@@ -1,5 +1,6 @@
 import * as path from 'path';
-import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
+import { findProjectRoot, loadConfigOrPromptInit, loadRawConfig } from '../core/config/loader';
+import type { DevEnvConfig } from '../types/config';
 import { checkConfigWarnings } from '../core/config/validator';
 import { generateComposeContent } from '../core/docker/compose-generator';
 import { logger } from '../utils/logger';
@@ -23,7 +24,7 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
   logger.debug(`Project root: ${projectRoot}`);
 
   const config = await loadConfigOrPromptInit(projectRoot, { offerInit: !options.dryRun });
-  checkConfigWarnings(config);
+  checkConfigWarnings(config, (await loadRawConfig(projectRoot)) as DevEnvConfig);
 
   if (config.docker?.enabled === false) {
     logger.info('Docker generation is disabled in config (docker.enabled: false).');
