@@ -271,6 +271,33 @@ describe('config loader', () => {
       expect(found).toBe(tempDir);
     });
 
+    it('prefers an ancestor .dev-env.yml over a nearer package.json (monorepo)', async () => {
+      const pkgDir = path.join(tempDir, 'packages', 'app');
+      const deep = path.join(pkgDir, 'src');
+      await fs.ensureDir(deep);
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: repo');
+      await fs.writeFile(path.join(pkgDir, 'package.json'), '{}');
+
+      expect(await findProjectRoot(deep)).toBe(tempDir);
+      expect(await findProjectRoot(pkgDir)).toBe(tempDir);
+    });
+
+    it('prefers the nearest .dev-env.yml when several exist', async () => {
+      const inner = path.join(tempDir, 'inner');
+      await fs.ensureDir(inner);
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), 'name: outer');
+      await fs.writeFile(path.join(inner, '.dev-env.yml'), 'name: inner');
+      expect(await findProjectRoot(path.join(inner))).toBe(inner);
+    });
+
+    it('uses the nearest marker when no ancestor has a config', async () => {
+      const pkgDir = path.join(tempDir, 'packages', 'app');
+      await fs.ensureDir(pkgDir);
+      await fs.writeFile(path.join(tempDir, 'package.json'), '{}');
+      await fs.writeFile(path.join(pkgDir, 'package.json'), '{}');
+      expect(await findProjectRoot(pkgDir)).toBe(pkgDir);
+    });
+
     it('returns directory containing go.mod when no .dev-env.yml or package.json', async () => {
       const subDir = path.join(tempDir, 'cmd', 'app');
       await fs.ensureDir(subDir);

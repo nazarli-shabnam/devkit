@@ -253,26 +253,39 @@ function resolveEnvVarsInConfig(obj: any, localEnv: Record<string, string>): any
   return obj;
 }
 
-export async function findProjectRoot(startPath: string = process.cwd()): Promise<string> {
-  let currentPath = resolvePath(startPath);
+const PROJECT_MARKERS = ['package.json', 'requirements.txt', 'Cargo.toml', 'go.mod'];
+
+/** Directories from `start` up to (excluding) the filesystem root. */
+function* ancestors(start: string): Generator<string> {
+  let currentPath = resolvePath(start);
   const root = path.parse(currentPath).root;
-
   while (currentPath !== root) {
-    const configPath = path.join(currentPath, '.dev-env.yml');
-    
-    if (await fileExists(configPath)) {
-      return currentPath;
-    }
+    yield currentPath;
+    currentPath = path.dirname(currentPath);
+  }
+}
 
-    const markers = ['package.json', 'requirements.txt', 'Cargo.toml', 'go.mod'];
-    for (const marker of markers) {
-      const markerPath = path.join(currentPath, marker);
-      if (await fileExists(markerPath)) {
-        return currentPath;
+/**
+ * Find the project root for a command run from `startPath`.
+ *
+ * An existing `.dev-env.yml` anywhere up the tree wins, so in a monorepo a sub-package's own
+ * `package.json` does not hide the repo-level config. Only when no config exists in any ancestor
+ * does the nearest project marker (package.json, requirements.txt, ...) decide, which is where
+ * `envkit init` will create one.
+ */
+export async function findProjectRoot(startPath: string = process.cwd()): Promise<string> {
+  for (const dir of ancestors(startPath)) {
+    if (await fileExists(path.join(dir, '.dev-env.yml'))) {
+      return dir;
+    }
+  }
+
+  for (const dir of ancestors(startPath)) {
+    for (const marker of PROJECT_MARKERS) {
+      if (await fileExists(path.join(dir, marker))) {
+        return dir;
       }
     }
-
-    currentPath = path.dirname(currentPath);
   }
 
   return process.cwd();
