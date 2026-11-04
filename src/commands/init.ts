@@ -249,8 +249,8 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
   );
 
   const docker = dockerEnabled.value
-    ? { enabled: true, output_file: 'docker-compose.yml', network_name: 'dev-network' }
-    : { enabled: false, output_file: 'docker-compose.yml', network_name: 'dev-network' };
+    ? { enabled: true, output_file: 'docker-compose.yml', network_name: 'dev-network', persist_data: true }
+    : { enabled: false, output_file: 'docker-compose.yml', network_name: 'dev-network', persist_data: true };
 
   const snapshot: DevEnvConfig['snapshot'] = {
     include_databases: true,

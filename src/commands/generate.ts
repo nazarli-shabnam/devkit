@@ -21,7 +21,7 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
   const projectRoot = await findProjectRoot(process.cwd());
   logger.debug(`Project root: ${projectRoot}`);
 
-  const config = await loadConfigOrPromptInit(projectRoot);
+  const config = await loadConfigOrPromptInit(projectRoot, { offerInit: !options.dryRun });
   checkConfigWarnings(config, (await loadRawConfig(projectRoot)) as DevEnvConfig);
 
   if (config.docker?.enabled === false) {
