@@ -191,6 +191,14 @@ describe('compose-generator', () => {
         expect(envOf(render('pa$word'))).toContain('POSTGRES_PASSWORD=pa$$word');
       });
 
+      it('keeps an unresolved ${NAME} reference so Compose can fill it in, but still escapes other $', () => {
+        expect(envOf(render('${DB_PASSWORD}'))).toContain('POSTGRES_PASSWORD=${DB_PASSWORD}');
+        expect(envOf(render('pw-${DB_PASSWORD}-$x'))).toContain('POSTGRES_PASSWORD=pw-${DB_PASSWORD}-$$x');
+        // not a plain reference (default syntax / invalid name): treated as literal text
+        expect(envOf(render('${A:-b}'))).toContain('POSTGRES_PASSWORD=$${A:-b}');
+        expect(envOf(render('${1X}'))).toContain('POSTGRES_PASSWORD=$${1X}');
+      });
+
       it('does not HTML-escape service names, images or versions', () => {
         const content = generateComposeContent(
           { name: 'app', services: [{ type: 'redis', version: '7&x', host: 'localhost' }] } as DevEnvConfig,

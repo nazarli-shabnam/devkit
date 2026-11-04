@@ -51,10 +51,13 @@ const DB_HEALTHCHECK_TESTS: Record<string, string[]> = {
 /**
  * Render one `KEY=value` environment entry as a double-quoted YAML scalar.
  * JSON string syntax is valid YAML, so quotes/colons/`#` in values stay literal;
- * `$` is doubled because Compose would otherwise interpolate it.
+ * A literal `$` is doubled because Compose would otherwise interpolate it, but a plain `${NAME}`
+ * is kept: it is a reference that was left unresolved (the variable was unset when generating),
+ * and Compose can still fill it in from its own environment/`.env` when the stack starts.
  */
 export function renderEnvEntry(key: string, value: string): string {
-  return JSON.stringify(`${key}=${value.replace(/\$/g, '$$$$')}`);
+  const composeValue = value.replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$/g, (token) => (token === '$' ? '$$' : token));
+  return JSON.stringify(`${key}=${composeValue}`);
 }
 
 function renderHealthcheckFragment(test: string[], hc?: HealthCheck): string {
