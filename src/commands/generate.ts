@@ -15,6 +15,13 @@ export interface GenerateOptions {
   force?: boolean;
 }
 
+/** `${NAME}` references left in generated compose text (`$${NAME}` escapes excluded). */
+function composeVariables(content: string): string[] {
+  const names = new Set<string>();
+  for (const m of content.matchAll(/(?<!\$)\$\{([A-Za-z_][A-Za-z0-9_]*)/g)) names.add(m[1]);
+  return [...names];
+}
+
 function getTemplatesDir(): string {
   return path.resolve(__dirname, '../../templates');
 }
@@ -24,7 +31,9 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
   logger.debug(`Project root: ${projectRoot}`);
 
   const config = await loadConfigOrPromptInit(projectRoot, { offerInit: !options.dryRun });
-  checkConfigWarnings(config, (await loadRawConfig(projectRoot)) as DevEnvConfig);
+  // The file as written: tells ${VAR} secrets from literals, and lets the compose keep references.
+  const writtenConfig = await loadRawConfig(projectRoot);
+  checkConfigWarnings(config, writtenConfig as DevEnvConfig);
 
   if (config.docker?.enabled === false) {
     logger.info('Docker generation is disabled in config (docker.enabled: false).');
@@ -46,7 +55,7 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
   const outPath = resolveOutputPath(options.output, configuredName, projectRoot);
 
   const templatesDir = getTemplatesDir();
-  const content = generatedHeader('docker compose') + generateComposeContent(config, templatesDir);
+  const content = generatedHeader('docker compose') + generateComposeContent(config, templatesDir, writtenConfig);
 
   if (options.dryRun) {
     // Print to stdout without writing, so it can be inspected or piped.
@@ -61,4 +70,12 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
 
   await writeFile(outPath, content);
   logger.success(`Wrote ${displayPath(outPath)}`);
+
+  const variables = composeVariables(content);
+  if (variables.length > 0) {
+    logger.info(
+      `The compose file refers to ${variables.join(', ')}: Compose reads them from a .env file next to it or from your shell, ` +
+        'so keep .env alongside docker-compose.yml (and out of version control).'
+    );
+  }
 }

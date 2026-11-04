@@ -13,6 +13,12 @@ export interface ComposeService {
   env: Record<string, string>;
   /** Pre-rendered YAML-safe `KEY=value` list items (double-quoted, `$` escaped for Compose), set at render time */
   envLines?: string[];
+  /**
+   * Credentials the user wrote as `${VAR}` references. They are emitted as written so Compose reads
+   * the value from `.env`/the environment when the stack starts, instead of the secret being baked
+   * into the generated file. Takes precedence over `env` for the same key.
+   */
+  composeEnv?: Record<string, string>;
   /** `image[:version]`, set at render time */
   imageRef?: string;
   /** Pre-rendered YAML fragment for healthcheck (indented), or undefined to omit */
@@ -58,6 +64,19 @@ const DB_HEALTHCHECK_TESTS: Record<string, string[]> = {
  */
 export function renderEnvEntry(key: string, value: string): string {
   const composeValue = value.replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$/g, (token) => (token === '$' ? '$$' : token));
+  return JSON.stringify(`${key}=${composeValue}`);
+}
+
+/**
+ * Turn a credential as written in .dev-env.yml into text Compose understands: `${VAR}`,
+ * `${VAR:-default}` and `$${...}` already are Compose syntax and are kept; any other `$` is doubled.
+ */
+export function toComposeValue(written: string): string {
+  return written.replace(/\$\$\{[^}]*\}|\$\{[^}]*\}|\$/g, (token) => (token === '$' ? '$$' : token));
+}
+
+/** A `KEY=value` list item whose value is already Compose-ready (no further escaping). */
+export function renderComposeEntry(key: string, composeValue: string): string {
   return JSON.stringify(`${key}=${composeValue}`);
 }
 
@@ -125,7 +144,8 @@ export function toServiceName(raw: string): string {
 function databaseToComposeService(
   db: Database,
   index: number,
-  healthChecks: HealthCheck[] | undefined
+  healthChecks: HealthCheck[] | undefined,
+  written?: { user?: unknown; password?: unknown }
 ): ComposeService | null {
   const image = DB_IMAGES[db.type];
   if (!image) return null;
@@ -153,6 +173,19 @@ function databaseToComposeService(
     if (db.database) env.MONGO_INITDB_DATABASE = db.database;
   }
 
+  // Where the user wrote ${VAR} for a credential, keep the reference instead of its resolved value.
+  const composeEnv: Record<string, string> = {};
+  const refFor = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.includes('${') ? toComposeValue(value) : undefined;
+  const userRef = refFor(written?.user);
+  const passwordRef = refFor(written?.password);
+  const userKeys = ['POSTGRES_USER', 'MYSQL_USER', 'MONGO_INITDB_ROOT_USERNAME'];
+  const passwordKeys = ['POSTGRES_PASSWORD', 'MYSQL_ROOT_PASSWORD', 'MYSQL_PASSWORD', 'MONGO_INITDB_ROOT_PASSWORD'];
+  for (const key of Object.keys(env)) {
+    if (userRef !== undefined && userKeys.includes(key)) composeEnv[key] = userRef;
+    if (passwordRef !== undefined && passwordKeys.includes(key)) composeEnv[key] = passwordRef;
+  }
+
   const healthcheck = buildHealthcheckForService(db.name ?? name, db.type, healthChecks, true);
 
   return {
@@ -161,6 +194,7 @@ function databaseToComposeService(
     version: db.version,
     ports,
     env,
+    composeEnv,
     healthcheck,
     dataDir: DB_DATA_DIRS[db.type],
   };
@@ -207,7 +241,12 @@ function loadComposeTemplate(templatesDir: string): string {
   }
 }
 
-export function generateComposeContent(config: DevEnvConfig, templatesDir: string): string {
+/**
+ * @param writtenConfig the config as written (see `loadRawConfig`). Database credentials written as
+ *   `${VAR}` stay references in the output; without it every value is the resolved one.
+ */
+export function generateComposeContent(config: DevEnvConfig, templatesDir: string, writtenConfig?: unknown): string {
+  const writtenDatabases = (writtenConfig as { databases?: unknown } | null | undefined)?.databases;
   const services: ComposeService[] = [];
   const usedNames = new Set<string>();
 
@@ -226,7 +265,8 @@ export function generateComposeContent(config: DevEnvConfig, templatesDir: strin
 
   const skipped: string[] = [];
   config.databases?.forEach((db, i) => {
-    const s = databaseToComposeService(db, i, healthChecks);
+    const writtenDb = Array.isArray(writtenDatabases) ? (writtenDatabases[i] as { user?: unknown; password?: unknown } | undefined) : undefined;
+    const s = databaseToComposeService(db, i, healthChecks, writtenDb);
     if (s) {
       s.name = deduplicateName(s.name);
       services.push(s);
@@ -263,15 +303,28 @@ export function generateComposeContent(config: DevEnvConfig, templatesDir: strin
   }
 
   const networkName = config.docker?.network_name ?? 'dev-network';
+  const literalPasswords = new Set<string>();
 
   const template = loadComposeTemplate(templatesDir);
   // noEscape: output is YAML, not HTML; HTML-escaping would corrupt values like `p&ss=w'rd`.
   const compiled = Handlebars.compile(template, { noEscape: true });
   for (const s of services) {
-    s.envLines = Object.entries(s.env).map(([k, v]) => renderEnvEntry(k, v));
+    const composeEnv = s.composeEnv ?? {};
+    s.envLines = Object.entries(s.env).map(([k, v]) =>
+      k in composeEnv ? renderComposeEntry(k, composeEnv[k]) : renderEnvEntry(k, v)
+    );
+    for (const [k, v] of Object.entries(s.env)) {
+      if (!(k in composeEnv) && /(PASSWORD)/.test(k) && v !== '') literalPasswords.add(s.name);
+    }
     s.imageRef = s.version ? `${s.image}:${s.version}` : s.image;
   }
   // `yq` emits any free-form string as a double-quoted YAML scalar (JSON syntax is valid YAML),
   // so values can never break out of their line or inject keys.
+  if (literalPasswords.size > 0) {
+    logger.warn(
+      `The generated compose file contains a literal password for: ${[...literalPasswords].join(', ')}. ` +
+        'Write it as ${VAR} in .dev-env.yml (and keep the value in .env) so it is not stored in docker-compose.yml.'
+    );
+  }
   return compiled({ services, networkName, volumeNames }, { helpers: { yq: (v: unknown) => JSON.stringify(String(v)) } });
 }
