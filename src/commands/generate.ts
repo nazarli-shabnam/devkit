@@ -1,5 +1,6 @@
 import * as path from 'path';
 import { findProjectRoot, loadConfigOrPromptInit, loadRawConfig } from '../core/config/loader';
+import type { DevEnvConfig } from '../types/config';
 import { checkConfigWarnings } from '../core/config/validator';
 import { generateComposeContent } from '../core/docker/compose-generator';
 import { logger } from '../utils/logger';
@@ -30,7 +31,9 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
   logger.debug(`Project root: ${projectRoot}`);
 
   const config = await loadConfigOrPromptInit(projectRoot, { offerInit: !options.dryRun });
-  checkConfigWarnings(config);
+  // The file as written: tells ${VAR} secrets from literals, and lets the compose keep references.
+  const writtenConfig = await loadRawConfig(projectRoot);
+  checkConfigWarnings(config, writtenConfig as DevEnvConfig);
 
   if (config.docker?.enabled === false) {
     logger.info('Docker generation is disabled in config (docker.enabled: false).');
@@ -52,7 +55,7 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
   const outPath = resolveOutputPath(options.output, configuredName, projectRoot);
 
   const templatesDir = getTemplatesDir();
-  const content = generatedHeader('docker compose') + generateComposeContent(config, templatesDir, await loadRawConfig(projectRoot));
+  const content = generatedHeader('docker compose') + generateComposeContent(config, templatesDir, writtenConfig);
 
   if (options.dryRun) {
     // Print to stdout without writing, so it can be inspected or piped.

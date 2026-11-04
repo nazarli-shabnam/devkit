@@ -278,6 +278,29 @@ describe('compose-generator', () => {
       });
     });
 
+    describe('rabbitmq management image', () => {
+      const imageFor = (svc: Record<string, unknown>): string => {
+        const content = generateComposeContent(
+          { name: 'app', services: [{ host: 'localhost', ...svc }] } as DevEnvConfig,
+          templatesDir
+        );
+        return require('js-yaml').load(content).services.rabbitmq_1.image;
+      };
+
+      it('uses the -management tag when management_port is set', () => {
+        expect(imageFor({ type: 'rabbitmq', version: '3.12', management_port: 15672 })).toBe('rabbitmq:3.12-management');
+      });
+      it('uses the management tag when no version is given', () => {
+        expect(imageFor({ type: 'rabbitmq', management_port: 15672 })).toBe('rabbitmq:management');
+      });
+      it('does not double-append when the version already names management', () => {
+        expect(imageFor({ type: 'rabbitmq', version: '3-management', management_port: 15672 })).toBe('rabbitmq:3-management');
+      });
+      it('leaves the plain tag when there is no management_port', () => {
+        expect(imageFor({ type: 'rabbitmq', version: '3.12', port: 5672 })).toBe('rabbitmq:3.12');
+      });
+    });
+
     it('throws when templates dir has no docker-compose.hbs', () => {
       const fs = require('fs');
       const os = require('os');

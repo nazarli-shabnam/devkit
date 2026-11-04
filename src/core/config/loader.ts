@@ -136,6 +136,17 @@ export async function loadConfig(projectRoot: string = process.cwd()): Promise<D
     const content = await readFile(configPath);
     const rawConfig = yaml.load(content, { schema: yaml.DEFAULT_SCHEMA }) as any;
 
+    // Say what is wrong with the file itself, not a bare schema error for the root.
+    if (rawConfig === undefined || rawConfig === null) {
+      throw new Error(`${configPath} is empty. Add at least a name, for example:\n  name: my-project`);
+    }
+    if (typeof rawConfig !== 'object' || Array.isArray(rawConfig)) {
+      throw new Error(
+        `${configPath} must be a mapping of settings (name: ..., dependencies: ...), ` +
+        `not a ${Array.isArray(rawConfig) ? 'list' : 'single value'}.`
+      );
+    }
+
     const resolvedConfig = resolveEnvVarsInConfig(rawConfig, extractLocalEnv(rawConfig));
 
     const config = DevEnvConfigSchema.parse(resolvedConfig);
@@ -151,7 +162,7 @@ export async function loadConfig(projectRoot: string = process.cwd()): Promise<D
       const issues = error.issues.map((issue: any) => 
         `  - ${issue.path.join('.')}: ${issue.message}`
       ).join('\n');
-      
+
       throw new Error(
         `Invalid configuration file:\n${issues}\n` +
         `Please check your .dev-env.yml file.`
