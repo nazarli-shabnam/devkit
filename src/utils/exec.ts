@@ -1,12 +1,16 @@
 import type { ExecaReturnValue } from 'execa';
 import { logger } from './logger';
 import { fileExists } from './file-ops';
-import { isWindows, getShell } from './platform';
+import { isWindows } from './platform';
 
 export interface ExecOptions {
   cwd?: string;
   env?: Record<string, string>;
   silent?: boolean;
+  /**
+   * Run `command` through the platform shell (`/bin/sh` or `cmd.exe`) instead of spawning it
+   * directly, so `&&`, pipes, redirects and `VAR=x cmd` work. Default: spawn directly.
+   */
   shell?: boolean | string;
 }
 
@@ -23,9 +27,6 @@ export async function exec(
 ): Promise<ExecaReturnValue<string>> {
   const { cwd, env, silent = false, shell } = options;
 
-  // On Windows, use shell for commands that might need it
-  const useShell = shell !== undefined ? shell : isWindows();
-
   if (!silent) {
     logger.debug(`Executing: ${command} ${args.join(' ')}`);
   }
@@ -41,7 +42,7 @@ export async function exec(
     const result = await execa(command, args, {
       cwd,
       env,
-      shell: useShell ? (isWindows() ? getShell() : true) : false,
+      shell: shell ?? false,
       stdio: silent ? 'pipe' : 'inherit',
     });
 

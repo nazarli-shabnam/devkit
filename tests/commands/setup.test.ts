@@ -119,7 +119,7 @@ describe('setup command', () => {
     await runSetup({ skipDeps: false });
 
     expect(execFn).toHaveBeenCalled();
-    expect(execFn).toHaveBeenCalledWith('npm', ['install'], expect.any(Object));
+    expect(execFn).toHaveBeenCalledWith('npm install', [], expect.objectContaining({ shell: true }));
   });
 
   it('runs migration command when config has migrations and skipDb is false', async () => {
@@ -144,9 +144,9 @@ describe('setup command', () => {
 
     expect(execFn).toHaveBeenCalled();
     const calls = (execFn as jest.Mock).mock.calls as [string, string[], Record<string, unknown>][];
-    const migrateCall = calls.find((c) => c[0] === 'npm' && c[1].includes('migrate'));
+    const migrateCall = calls.find((c) => c[0] === 'npm run migrate');
     expect(migrateCall).toBeDefined();
-    const seedCall = calls.find((c) => c[0] === 'npm' && c[1].includes('seed'));
+    const seedCall = calls.find((c) => c[0] === 'npm run seed');
     expect(seedCall).toBeDefined();
   });
 
@@ -170,8 +170,20 @@ describe('setup command', () => {
     await runSetup({ skipDeps: true, skipDb: false });
 
     const calls = (execFn as jest.Mock).mock.calls as [string, string[], Record<string, unknown>][];
-    const seedCall = calls.find((c) => c[0] === 'npm' && c[1].includes('seed'));
+    const seedCall = calls.find((c) => c[0] === 'npm run seed');
     expect(seedCall).toBeDefined();
     expect(seedCall![2].cwd).toBe(path.resolve(tempDir, './scripts'));
+  });
+
+  it('rejects a blank seed command in a dry run too (same rule as a real run)', async () => {
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      ['name: setup-test', 'databases:', '  - type: postgresql', '    seed:', "      command: '  '"].join('\n')
+    );
+    process.chdir(tempDir);
+
+    await expect(runSetup({ dryRun: true })).rejects.toThrow(/Empty command/);
+    await expect(runSetup({})).rejects.toThrow(/Empty command/);
+    expect(execFn).not.toHaveBeenCalled();
   });
 });
