@@ -179,5 +179,55 @@ describe('validator', () => {
         expect.stringContaining('Port 5432')
       );
     });
+
+    it('detects conflicts between databases that rely on default ports', () => {
+      const config = {
+        name: 'app',
+        databases: [
+          { type: 'postgresql' as const, host: 'localhost' },
+          { type: 'postgresql' as const, name: 'second', host: 'localhost' },
+        ],
+      };
+      const warnings = checkConfigWarnings(config as unknown as DevEnvConfig);
+      expect(warnings.some((w) => w.includes('Port 5432'))).toBe(true);
+    });
+
+    it('uses the default port when comparing an explicit port against another database', () => {
+      const config = {
+        name: 'app',
+        databases: [
+          { type: 'redis' as const, host: 'localhost' },
+          { type: 'postgresql' as const, port: 6379, host: 'localhost' },
+        ],
+      };
+      const warnings = checkConfigWarnings(config as unknown as DevEnvConfig);
+      expect(warnings.some((w) => w.includes('Port 6379'))).toBe(true);
+    });
+
+    it('detects a service port that collides with another service management_port', () => {
+      const config = {
+        name: 'app',
+        services: [
+          { type: 'rabbitmq', port: 5672, management_port: 15672, host: 'localhost' },
+          { type: 'other', port: 15672, host: 'localhost' },
+        ],
+      };
+      const warnings = checkConfigWarnings(config as unknown as DevEnvConfig);
+      expect(warnings.some((w) => w.includes('Port 15672'))).toBe(true);
+    });
+
+    it('does not warn when default ports differ or sqlite has no port', () => {
+      const config = {
+        name: 'app',
+        databases: [
+          { type: 'postgresql' as const, user: 'u', password: 'p', host: 'localhost' },
+          { type: 'redis' as const, host: 'localhost' },
+          { type: 'sqlite' as const, host: 'localhost' },
+          { type: 'sqlite' as const, host: 'localhost' },
+        ],
+      };
+      const warnings = checkConfigWarnings(config as unknown as DevEnvConfig);
+      expect(warnings.filter((w) => w.includes('Port'))).toEqual([]);
+    });
   });
 });

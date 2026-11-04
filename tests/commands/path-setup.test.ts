@@ -33,19 +33,52 @@ describe('path-setup command', () => {
     jest.mocked(prompts as any).mockReset();
   });
 
-  it('returns silently when npm bin -g fails', async () => {
+  // npm prefix -g prints the prefix; the bin dir is <prefix>/bin (POSIX) or the prefix itself (Windows).
+  const binFor = (prefix: string): string => (process.platform === 'win32' ? prefix : path.join(prefix, 'bin'));
+
+  it('asks npm for its prefix (npm bin -g no longer exists) and derives the bin dir', async () => {
+    const prefix = path.resolve('/usr/local');
+    jest.mocked(execSync).mockReturnValue(prefix + '\n');
+    process.env.PATH = binFor(prefix) + path.delimiter + '/usr/bin';
+
+    await runPathSetup();
+    expect(execSync).toHaveBeenCalledWith('npm prefix -g', expect.any(Object));
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('already on your PATH'));
+  });
+
+  it('tells the user when the global location cannot be determined (explicit run)', async () => {
     jest.mocked(execSync).mockImplementation(() => {
       throw new Error('npm not found');
     });
 
-    await runPathSetup();
-    expect(logger.info).not.toHaveBeenCalled();
+    await expect(runPathSetup()).rejects.toThrow(/Could not find npm's global install location/);
+  });
+
+  it('rejects an empty prefix', async () => {
+    jest.mocked(execSync).mockReturnValue('  \n');
+    await expect(runPathSetup()).rejects.toThrow(/printed nothing/);
+  });
+
+  it('stays silent when npm cannot be queried during postinstall', async () => {
+    const previous = process.env.npm_lifecycle_event;
+    process.env.npm_lifecycle_event = 'postinstall';
+    jest.mocked(execSync).mockImplementation(() => {
+      throw new Error('npm not found');
+    });
+    try {
+      await expect(runPathSetup()).resolves.toBeUndefined();
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.npm_lifecycle_event;
+      else process.env.npm_lifecycle_event = previous;
+    }
   });
 
   it('logs "already on PATH" when bin path is in PATH', async () => {
-    const fakeBin = path.resolve('/usr/local/lib/node_modules/.bin');
-    jest.mocked(execSync).mockReturnValue(fakeBin + '\n');
-    process.env.PATH = fakeBin + path.delimiter + '/usr/bin';
+    const prefix = path.resolve('/usr/local/lib/node');
+    jest.mocked(execSync).mockReturnValue(prefix + '\n');
+    process.env.PATH = binFor(prefix) + path.delimiter + '/usr/bin';
 
     await runPathSetup();
     expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('already on your PATH'));
@@ -76,6 +109,8 @@ describe('path-setup command', () => {
     const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean };
     const origTTY = stdout.isTTY;
     stdout.isTTY = true;
+    const origStdinTTY = process.stdin.isTTY;
+    process.stdin.isTTY = true;
 
     jest.mocked(prompts as any).mockResolvedValueOnce({ value: false });
 
@@ -84,6 +119,7 @@ describe('path-setup command', () => {
       expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('Skipped'));
     } finally {
       stdout.isTTY = origTTY;
+      process.stdin.isTTY = origStdinTTY;
     }
   });
 });

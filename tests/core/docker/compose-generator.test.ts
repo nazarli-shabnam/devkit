@@ -7,13 +7,13 @@ const templatesDir = path.resolve(__dirname, '../../../templates');
 
 describe('compose-generator', () => {
   describe('generateComposeContent', () => {
-    it('produces valid YAML with version and network when config has no databases or services', () => {
+    it('produces valid YAML (no obsolete version key) with network when config has no databases or services', () => {
       const config = {
         name: 'empty-app',
         docker: { network_name: 'my-network' },
       } as DevEnvConfig;
       const content = generateComposeContent(config, templatesDir);
-      expect(content).toContain('version:');
+      expect(content).not.toMatch(/^version:/m);
       expect(content).toContain('services:');
       expect(content).toContain('my-network');
       expect(content).toContain('networks:');
@@ -50,7 +50,7 @@ describe('compose-generator', () => {
       expect(content).toContain('healthcheck:');
       expect(content).toMatch(/pg_isready|postgres/);
       expect(content).toMatch(/redis-cli|ping/);
-      expect(content).toContain('interval: 10s');
+      expect(content).toContain('interval: "10s"');
     });
 
     it('skips sqlite (no container service)', () => {
@@ -91,7 +91,7 @@ describe('compose-generator', () => {
       const content = generateComposeContent(config, templatesDir);
       expect(content).toContain('healthcheck:');
       expect(content).toContain('rabbitmq-diagnostics ping');
-      expect(content).toContain('interval: 30s');
+      expect(content).toContain('interval: "30s"');
       expect(content).toContain('retries: 3');
     });
 
@@ -102,7 +102,7 @@ describe('compose-generator', () => {
         docker: {},
       } as DevEnvConfig;
       const content = generateComposeContent(config, templatesDir);
-      expect(content).toContain('redis_1:');
+      expect(Object.keys(require('js-yaml').load(content).services)).toContain('redis_1');
       expect(content).not.toContain('healthcheck:');
     });
 
@@ -147,7 +147,7 @@ describe('compose-generator', () => {
       const content = generateComposeContent(config, templatesDir);
       expect(content).toContain('healthcheck:');
       expect(content).toMatch(/mysqladmin|mongosh/);
-      expect(content).toContain('interval: 10s');
+      expect(content).toContain('interval: "10s"');
     });
 
     it('deduplicates service names when databases would collide', () => {
@@ -161,8 +161,144 @@ describe('compose-generator', () => {
       } as DevEnvConfig;
       const content = generateComposeContent(config, templatesDir);
       // First one keeps name "db", second should get "db_2"
-      expect(content).toContain('db:');
-      expect(content).toContain('db_2:');
+      const names = Object.keys(require('js-yaml').load(content).services);
+      expect(names).toEqual(expect.arrayContaining(['db', 'db_2']));
+    });
+
+    describe('environment value rendering', () => {
+      const yaml = require('js-yaml');
+      const render = (password: string) =>
+        generateComposeContent(
+          {
+            name: 'app',
+            databases: [{ type: 'postgresql' as const, user: 'u', password, host: 'localhost' }],
+          } as DevEnvConfig,
+          templatesDir
+        );
+      const envOf = (content: string): string[] => yaml.load(content).services.postgresql_1.environment;
+
+      it('does not HTML-escape special characters in values', () => {
+        const pw = "p&ss=w'rd<>\"`";
+        expect(envOf(render(pw))).toContain(`POSTGRES_PASSWORD=${pw}`);
+      });
+
+      it('keeps values containing ": " and " #" as a single literal list item', () => {
+        expect(envOf(render('x: y'))).toContain('POSTGRES_PASSWORD=x: y');
+        expect(envOf(render('a #b'))).toContain('POSTGRES_PASSWORD=a #b');
+      });
+
+      it('escapes $ so Compose does not interpolate literal values', () => {
+        expect(envOf(render('pa$word'))).toContain('POSTGRES_PASSWORD=pa$$word');
+      });
+
+      it('keeps an unresolved ${NAME} reference so Compose can fill it in, but still escapes other $', () => {
+        expect(envOf(render('${DB_PASSWORD}'))).toContain('POSTGRES_PASSWORD=${DB_PASSWORD}');
+        expect(envOf(render('pw-${DB_PASSWORD}-$x'))).toContain('POSTGRES_PASSWORD=pw-${DB_PASSWORD}-$$x');
+        // not a plain reference (default syntax / invalid name): treated as literal text
+        expect(envOf(render('${A:-b}'))).toContain('POSTGRES_PASSWORD=$${A:-b}');
+        expect(envOf(render('${1X}'))).toContain('POSTGRES_PASSWORD=$${1X}');
+      });
+
+      it('does not HTML-escape service names, images or versions', () => {
+        const content = generateComposeContent(
+          { name: 'app', services: [{ type: 'redis', version: '7&x', host: 'localhost' }] } as DevEnvConfig,
+          templatesDir
+        );
+        expect(yaml.load(content).services.redis_1.image).toBe('redis:7&x');
+        expect(content).not.toContain('&amp;');
+      });
+    });
+
+    it('quotes free-form name/version/network so values cannot break YAML or inject keys', () => {
+      const yaml = require('js-yaml');
+      const content = generateComposeContent(
+        {
+          name: 'app',
+          services: [{ type: 'redis', version: '7\n    privileged: true #x', host: 'localhost' }],
+          docker: { network_name: 'n: x' },
+        } as DevEnvConfig,
+        templatesDir
+      );
+      const doc = yaml.load(content);
+      expect(doc.services.redis_1.image).toBe('redis:7\n    privileged: true #x');
+      expect(doc.services.redis_1.privileged).toBeUndefined();
+      expect(doc.services.redis_1.networks).toEqual(['n: x']);
+      expect(Object.keys(doc.networks)).toEqual(['n: x']);
+    });
+
+    it('quotes healthcheck interval/timeout so they cannot inject YAML keys', () => {
+      const yaml = require('js-yaml');
+      const content = generateComposeContent(
+        {
+          name: 'app',
+          databases: [{ type: 'redis' as const, host: 'localhost' }],
+          health_checks: [{ name: 'redis_1', type: 'redis', interval: '5s\n    privileged: true', timeout: '3s' }],
+        } as DevEnvConfig,
+        templatesDir
+      );
+      const svc = yaml.load(content).services.redis_1;
+      expect(svc.privileged).toBeUndefined();
+      expect(svc.healthcheck.interval).toBe('5s\n    privileged: true');
+      expect(svc.healthcheck.timeout).toBe('3s');
+    });
+
+    describe('service name sanitization', () => {
+      const namesOf = (config: Record<string, unknown>): string[] =>
+        Object.keys(
+          require('js-yaml').load(generateComposeContent({ name: 'app', ...config } as DevEnvConfig, templatesDir)).services
+        );
+
+      it('turns namespaced image types into valid service names', () => {
+        expect(namesOf({ services: [{ type: 'bitnami/redis', port: 6379, host: 'localhost' }] })).toEqual(['bitnami_redis_1']);
+        expect(namesOf({ services: [{ type: 'mcr.microsoft.com/mssql/server', host: 'localhost' }] })).toEqual([
+          'mcr.microsoft.com_mssql_server_1',
+        ]);
+      });
+
+      it('sanitizes explicit database names and warns', () => {
+        const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+        expect(namesOf({ databases: [{ type: 'postgresql', name: 'my db!', host: 'localhost' }] })).toEqual(['my_db_']);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('my db!'));
+      });
+
+      it('keeps valid names untouched and still de-duplicates', () => {
+        expect(
+          namesOf({
+            databases: [
+              { type: 'postgresql', name: 'app-db', host: 'localhost' },
+              { type: 'postgresql', name: 'app-db', host: 'localhost' },
+            ],
+          })
+        ).toEqual(['app-db', 'app-db_2']);
+      });
+
+      it('never produces an empty or symbol-leading name', () => {
+        expect(namesOf({ databases: [{ type: 'redis', name: '***', host: 'localhost' }] })).toEqual(['service']);
+        expect(namesOf({ databases: [{ type: 'redis', name: '.hidden', host: 'localhost' }] })).toEqual(['hidden']);
+      });
+    });
+
+    describe('rabbitmq management image', () => {
+      const imageFor = (svc: Record<string, unknown>): string => {
+        const content = generateComposeContent(
+          { name: 'app', services: [{ host: 'localhost', ...svc }] } as DevEnvConfig,
+          templatesDir
+        );
+        return require('js-yaml').load(content).services.rabbitmq_1.image;
+      };
+
+      it('uses the -management tag when management_port is set', () => {
+        expect(imageFor({ type: 'rabbitmq', version: '3.12', management_port: 15672 })).toBe('rabbitmq:3.12-management');
+      });
+      it('uses the management tag when no version is given', () => {
+        expect(imageFor({ type: 'rabbitmq', management_port: 15672 })).toBe('rabbitmq:management');
+      });
+      it('does not double-append when the version already names management', () => {
+        expect(imageFor({ type: 'rabbitmq', version: '3-management', management_port: 15672 })).toBe('rabbitmq:3-management');
+      });
+      it('leaves the plain tag when there is no management_port', () => {
+        expect(imageFor({ type: 'rabbitmq', version: '3.12', port: 5672 })).toBe('rabbitmq:3.12');
+      });
     });
 
     it('throws when templates dir has no docker-compose.hbs', () => {

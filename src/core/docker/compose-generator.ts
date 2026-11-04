@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { DevEnvConfig, Database, Service, HealthCheck } from '../../types/config';
 import { logger } from '../../utils/logger';
+import { effectiveDbPort } from '../config/defaults';
 
 export interface ComposeService {
   name: string;
@@ -10,8 +11,16 @@ export interface ComposeService {
   version?: string;
   ports: string[];
   env: Record<string, string>;
+  /** Pre-rendered YAML-safe `KEY=value` list items (double-quoted, `$` escaped for Compose), set at render time */
+  envLines?: string[];
+  /** `image[:version]`, set at render time */
+  imageRef?: string;
   /** Pre-rendered YAML fragment for healthcheck (indented), or undefined to omit */
   healthcheck?: string;
+  /** Container data directory to persist in a named volume (databases only) */
+  dataDir?: string;
+  /** `volume:path` mounts, set at render time */
+  volumes?: string[];
 }
 
 const DB_IMAGES: Record<string, string> = {
@@ -23,6 +32,15 @@ const DB_IMAGES: Record<string, string> = {
   sqlite: '',
 };
 
+/** Where each database image keeps its data. */
+const DB_DATA_DIRS: Record<string, string> = {
+  postgresql: '/var/lib/postgresql/data',
+  mysql: '/var/lib/mysql',
+  mariadb: '/var/lib/mysql',
+  mongodb: '/data/db',
+  redis: '/data',
+};
+
 const DB_HEALTHCHECK_TESTS: Record<string, string[]> = {
   postgresql: ['CMD-SHELL', 'pg_isready'],
   mysql: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost'],
@@ -31,14 +49,26 @@ const DB_HEALTHCHECK_TESTS: Record<string, string[]> = {
   redis: ['CMD', 'redis-cli', 'ping'],
 };
 
+/**
+ * Render one `KEY=value` environment entry as a double-quoted YAML scalar.
+ * JSON string syntax is valid YAML, so quotes/colons/`#` in values stay literal;
+ * A literal `$` is doubled because Compose would otherwise interpolate it, but a plain `${NAME}`
+ * is kept: it is a reference that was left unresolved (the variable was unset when generating),
+ * and Compose can still fill it in from its own environment/`.env` when the stack starts.
+ */
+export function renderEnvEntry(key: string, value: string): string {
+  const composeValue = value.replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$/g, (token) => (token === '$' ? '$$' : token));
+  return JSON.stringify(`${key}=${composeValue}`);
+}
+
 function renderHealthcheckFragment(test: string[], hc?: HealthCheck): string {
   const interval = hc?.interval ?? '10s';
   const timeout = hc?.timeout ?? '5s';
   const retries = hc?.retries ?? 5;
   return [
     `      test: ${JSON.stringify(test)}`,
-    `      interval: ${interval}`,
-    `      timeout: ${timeout}`,
+    `      interval: ${JSON.stringify(String(interval))}`,
+    `      timeout: ${JSON.stringify(String(timeout))}`,
     `      retries: ${retries}`,
   ].join('\n');
 }
@@ -67,7 +97,9 @@ function buildHealthcheckForService(
   );
 
   if (matched?.test) {
-    return renderHealthcheckFragment(['CMD-SHELL', matched.test], matched);
+    // Compose interpolates `${...}` in the file on the host; `$$` makes the container's own
+    // shell see a literal `$` (so `$${POSTGRES_USER}` in the config expands inside the container).
+    return renderHealthcheckFragment(['CMD-SHELL', matched.test.replace(/\$/g, '$$$$')], matched);
   }
 
   if (matched && DB_HEALTHCHECK_TESTS[matched.type]) {
@@ -81,6 +113,15 @@ function buildHealthcheckForService(
   return renderHealthcheckFragment(test, matched);
 }
 
+/**
+ * Compose service names must match `[a-zA-Z0-9][a-zA-Z0-9_.-]*`. Anything else
+ * (slashes from namespaced images, spaces, ...) becomes `_`.
+ */
+export function toServiceName(raw: string): string {
+  const cleaned = raw.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^[^a-zA-Z0-9]+/, '');
+  return cleaned || 'service';
+}
+
 function databaseToComposeService(
   db: Database,
   index: number,
@@ -89,11 +130,11 @@ function databaseToComposeService(
   const image = DB_IMAGES[db.type];
   if (!image) return null;
 
-  const DB_DEFAULT_PORTS: Record<string, number> = {
-    postgresql: 5432, mysql: 3306, mariadb: 3306, mongodb: 27017, redis: 6379,
-  };
-  const name = db.name ?? `${db.type}_${index + 1}`.replace(/-/g, '_');
-  const port = db.port ?? DB_DEFAULT_PORTS[db.type] ?? 5432;
+  const name = toServiceName(db.name ?? `${db.type}_${index + 1}`.replace(/-/g, '_'));
+  if (db.name && name !== db.name) {
+    logger.warn(`Database name "${db.name}" is not a valid Compose service name; using "${name}".`);
+  }
+  const port = effectiveDbPort(db) ?? 5432;
   const ports = [`${port}:${port}`];
 
   const env: Record<string, string> = {};
@@ -112,7 +153,7 @@ function databaseToComposeService(
     if (db.database) env.MONGO_INITDB_DATABASE = db.database;
   }
 
-  const healthcheck = buildHealthcheckForService(name, db.type, healthChecks, true);
+  const healthcheck = buildHealthcheckForService(db.name ?? name, db.type, healthChecks, true);
 
   return {
     name,
@@ -121,7 +162,17 @@ function databaseToComposeService(
     ports,
     env,
     healthcheck,
+    dataDir: DB_DATA_DIRS[db.type],
   };
+}
+
+/**
+ * The RabbitMQ management UI only ships in the `-management` image variants, so a
+ * published `management_port` would otherwise serve nothing. Pick the matching tag.
+ */
+function rabbitmqManagementVersion(version: string | undefined): string {
+  if (!version) return 'management';
+  return version.includes('management') ? version : `${version}-management`;
 }
 
 function serviceToComposeService(
@@ -129,7 +180,7 @@ function serviceToComposeService(
   index: number,
   healthChecks: HealthCheck[] | undefined
 ): ComposeService {
-  const name = `${svc.type}_${index + 1}`.replace(/-/g, '_');
+  const name = toServiceName(`${svc.type}_${index + 1}`.replace(/-/g, '_'));
   const ports: string[] = [];
   if (svc.port) ports.push(`${svc.port}:${svc.port}`);
   if (svc.management_port) ports.push(`${svc.management_port}:${svc.management_port}`);
@@ -137,7 +188,7 @@ function serviceToComposeService(
   return {
     name,
     image: svc.type,
-    version: svc.version,
+    version: svc.type === 'rabbitmq' && svc.management_port ? rabbitmqManagementVersion(svc.version) : svc.version,
     ports,
     env: {},
     healthcheck,
@@ -197,9 +248,30 @@ export function generateComposeContent(config: DevEnvConfig, templatesDir: strin
     services.push(s);
   });
 
+  // Named volumes keep database data across `docker compose down`/`up` (opt out: docker.persist_data: false).
+  const volumeNames: string[] = [];
+  if (config.docker?.persist_data !== false) {
+    for (const svc of services) {
+      if (!svc.dataDir) continue;
+      const volume = `${svc.name}_data`;
+      svc.volumes = [`${volume}:${svc.dataDir}`];
+      // postgres:18+ moved its default data dir and refuses a mount at the old path unless
+      // PGDATA points there, so pin it (valid for every version).
+      if (svc.image === 'postgres') svc.env.PGDATA = svc.dataDir;
+      volumeNames.push(volume);
+    }
+  }
+
   const networkName = config.docker?.network_name ?? 'dev-network';
 
   const template = loadComposeTemplate(templatesDir);
-  const compiled = Handlebars.compile(template);
-  return compiled({ services, networkName });
+  // noEscape: output is YAML, not HTML; HTML-escaping would corrupt values like `p&ss=w'rd`.
+  const compiled = Handlebars.compile(template, { noEscape: true });
+  for (const s of services) {
+    s.envLines = Object.entries(s.env).map(([k, v]) => renderEnvEntry(k, v));
+    s.imageRef = s.version ? `${s.image}:${s.version}` : s.image;
+  }
+  // `yq` emits any free-form string as a double-quoted YAML scalar (JSON syntax is valid YAML),
+  // so values can never break out of their line or inject keys.
+  return compiled({ services, networkName, volumeNames }, { helpers: { yq: (v: unknown) => JSON.stringify(String(v)) } });
 }

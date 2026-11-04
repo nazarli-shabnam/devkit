@@ -2,6 +2,7 @@
 # Copy this file to .dev-env.yml and customize for your project
 
 name: my-project
+# Tip: quote versions ("15", "3.10"): YAML reads an unquoted 3.10 as the number 3.1.
 version: "1.0.0"
 
 dependencies:
@@ -17,7 +18,6 @@ databases:
     name: myapp_db
     version: "15"
     port: 5432
-    host: localhost
     user: ${DB_USER}  # Use environment variable
     password: ${DB_PASSWORD}  # Use environment variable
     database: myapp
@@ -31,49 +31,34 @@ databases:
   # - type: redis
   #   version: "7"
   #   port: 6379
-  #   host: localhost
 
 services:
   # - type: rabbitmq
   #   version: "3.12"
   #   port: 5672
-  #   management_port: 15672
+  #   management_port: 15672   # rabbitmq: the generated image uses the -management tag so this UI is served
 
 # Environment variables (use .env file for secrets)
 env:
   NODE_ENV: development
-  # Use ${VAR_NAME} syntax to reference .env variables
+  # Use ${VAR_NAME} syntax to reference .env variables; ${VAR:-default} supplies a fallback,
+  # and $${VAR} writes a literal ${VAR} (e.g. for a command that expands it itself)
   DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/myapp
   # REDIS_URL: redis://localhost:6379
 
-# Health checks to verify setup
-health_checks:
-  - name: database
-    type: postgresql
-    connection_string: postgresql://${DB_USER}:${DB_PASSWORD}@localhost:5432/myapp
-  # - name: redis
-  #   type: redis
-  #   url: redis://localhost:6379
-  # Generic (non-database) services can define a raw healthcheck command with `test`:
-  # - name: rabbitmq_1        # matches the generated service name, or use type
-  #   type: rabbitmq
-  #   test: rabbitmq-diagnostics -q ping
-  #   interval: 30s
-  #   timeout: 10s
-  #   retries: 5
-
-# Snapshot configuration
-snapshot:
-  include_databases: true
-  include_volumes: true
-  exclude_paths:
-    - node_modules
-    - .git
-    - dist
-    - build
+# Container healthchecks. Databases get a sensible default automatically; add an entry to tune
+# interval/timeout/retries, or give any service a custom check with `test`:
+# health_checks:
+#   - name: rabbitmq_1        # the generated service name (or match by type)
+#     type: rabbitmq
+#     test: rabbitmq-diagnostics -q ping
+#     interval: 30s
+#     timeout: 10s
+#     retries: 5
 
 # Docker Compose generation
 docker:
   enabled: true
   output_file: docker-compose.yml
   network_name: dev-network
+  persist_data: true   # named volume per database so data survives `docker compose down`

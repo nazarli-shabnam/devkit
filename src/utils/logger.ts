@@ -33,7 +33,16 @@ class Logger {
       typeof arg === 'object' ? util.inspect(arg, { depth: 2 }) : String(arg)
     ).join(' ');
     
-    return `[${timestamp}] [${level}] ${message}${formattedArgs ? ' ' + formattedArgs : ''}`;
+    const text = `${message}${formattedArgs ? ' ' + formattedArgs : ''}`;
+
+    // Verbose mode keeps the full diagnostic format (timestamp + level) for bug reports.
+    if (this.level <= LogLevel.DEBUG) {
+      return `[${timestamp}] [${level}] ${text}`;
+    }
+    // Normal output reads like a CLI, not a log file: plain text, with a label only where
+    // the severity matters (and not twice when the message already starts with it).
+    const label = level === 'WARN' ? 'Warning' : level === 'ERROR' ? 'Error' : '';
+    return label && !text.startsWith(label) ? `${label}: ${text}` : text;
   }
 
   debug(message: string, ...args: any[]): void {
@@ -60,11 +69,22 @@ class Logger {
     }
   }
 
+  /** Progress/result lines for people: shown at the default level and below, hidden by `--quiet`. */
   success(message: string): void {
+    if (this.level > LogLevel.INFO) return;
     console.log(this.colors.green + this.colors.bright + `✓ ${message}` + this.colors.reset);
   }
 
+  /**
+   * The requested data itself (e.g. `snapshot list`): always printed to stdout, even with
+   * `--quiet`, so scripts can rely on it.
+   */
+  output(message: string): void {
+    console.log(message);
+  }
+
   step(message: string): void {
+    if (this.level > LogLevel.INFO) return;
     console.log(this.colors.blue + `→ ${message}` + this.colors.reset);
   }
 }

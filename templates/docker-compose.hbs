@@ -1,19 +1,23 @@
-version: "3.8"
-
 services:
 {{#each services}}
-  {{name}}:
-    image: {{image}}{{#if version}}:{{version}}{{/if}}
+  {{{yq name}}}:
+    image: {{{yq imageRef}}}
     {{#if ports}}
     ports:
       {{#each ports}}
-      - "{{this}}"
+      - {{{yq this}}}
       {{/each}}
     {{/if}}
-    {{#if env}}
+    {{#if envLines}}
     environment:
-      {{#each env}}
-      - {{@key}}={{this}}
+      {{#each envLines}}
+      - {{{this}}}
+      {{/each}}
+    {{/if}}
+    {{#if volumes}}
+    volumes:
+      {{#each volumes}}
+      - {{this}}
       {{/each}}
     {{/if}}
     {{#if healthcheck}}
@@ -21,9 +25,16 @@ services:
 {{{healthcheck}}}
     {{/if}}
     networks:
-      - {{../networkName}}
+      - {{{yq ../networkName}}}
 {{/each}}
 
+{{#if volumeNames}}
+volumes:
+{{#each volumeNames}}
+  {{this}}:
+{{/each}}
+
+{{/if}}
 networks:
-  {{networkName}}:
-    name: {{networkName}}
+  {{{yq networkName}}}:
+    name: {{{yq networkName}}}

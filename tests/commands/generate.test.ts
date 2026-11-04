@@ -54,7 +54,7 @@ describe('generate command', () => {
     const outPath = path.join(tempDir, 'docker-compose.yml');
     expect(await fs.pathExists(outPath)).toBe(true);
     const content = await fs.readFile(outPath, 'utf-8');
-    expect(content).toContain('version:');
+    expect(content).not.toMatch(/^version:/m);
     expect(content).toContain('services:');
     expect(content).toContain('postgres');
     expect(content).toContain('redis');
@@ -118,7 +118,7 @@ describe('generate command', () => {
     expect(content).toContain('healthcheck:');
     expect(content).toMatch(/pg_isready|postgres/);
     expect(content).toMatch(/redis-cli|ping/);
-    expect(content).toContain('interval: 10s');
+    expect(content).toContain('interval: "10s"');
   });
 
   it('writes to cwd (not project root) when run from subdirectory', async () => {

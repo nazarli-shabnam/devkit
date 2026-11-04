@@ -12,6 +12,7 @@ describe('snapshot commands', () => {
     jest.spyOn(logger, 'info').mockImplementation();
     jest.spyOn(logger, 'success').mockImplementation();
     jest.spyOn(logger, 'step').mockImplementation();
+    jest.spyOn(logger, 'output').mockImplementation();
     jest.spyOn(logger, 'warn').mockImplementation();
     jest.spyOn(logger, 'debug').mockImplementation();
     tempDir = path.join(require('os').tmpdir(), `devkit-snapshot-cmd-${Date.now()}`);
@@ -127,9 +128,9 @@ describe('snapshot commands', () => {
 
       await runSnapshotList();
 
-      expect(logger.step).toHaveBeenCalledWith(expect.stringContaining('2 snapshot'));
-      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('first'));
-      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('second'));
+      expect(logger.output).toHaveBeenCalledWith(expect.stringContaining('2 snapshot'));
+      expect(logger.output).toHaveBeenCalledWith(expect.stringContaining('first'));
+      expect(logger.output).toHaveBeenCalledWith(expect.stringContaining('second'));
     });
 
     it('lists snapshots in createdAt descending order', async () => {
@@ -141,9 +142,9 @@ describe('snapshot commands', () => {
 
       await runSnapshotList();
 
-      const stepCall = (logger.step as jest.Mock).mock.calls[0][0];
-      expect(stepCall).toContain('2 snapshot');
-      const infoCalls = (logger.info as jest.Mock).mock.calls.map((c: unknown[]) => c[0] as string);
+      const outputCalls = (logger.output as jest.Mock).mock.calls.map((c: unknown[]) => c[0] as string);
+      expect(outputCalls[0]).toContain('2 snapshot');
+      const infoCalls = outputCalls;
       const newIdx = infoCalls.findIndex((s) => s.includes('new'));
       const oldIdx = infoCalls.findIndex((s) => s.includes('old'));
       expect(newIdx).toBeLessThan(oldIdx);

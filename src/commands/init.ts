@@ -1,15 +1,16 @@
 import * as path from 'path';
+import * as fs from 'fs-extra';
 import * as yaml from 'js-yaml';
 import prompts from 'prompts';
 import { fileExists, readJson, writeFile } from '../utils/file-ops';
 import { logger } from '../utils/logger';
+import { exitOnCancel, isInteractive as terminalAvailable } from '../utils/prompt';
 import {
   DevEnvConfig,
   DevEnvConfigSchema,
   type Dependency,
   type Database,
   type Service,
-  type HealthCheck,
 } from '../types/config';
 
 const DEPENDENCY_TYPES = ['npm', 'yarn', 'pnpm', 'pip', 'pipenv', 'poetry', 'cargo', 'go', 'custom'] as const;
@@ -28,7 +29,82 @@ const DEFAULT_DEPENDENCY_COMMANDS: Record<string, string> = {
 };
 
 export function isInteractive(): boolean {
-  return Boolean(process.stdout.isTTY);
+  return terminalAvailable();
+}
+
+interface DatabaseDefaults {
+  version?: string;
+  port?: number;
+  /** Whether the database has a user name / a password / a database name (sqlite: a file instead). */
+  user: boolean;
+  password: boolean;
+  database: boolean;
+}
+
+/** Sensible wizard defaults per database type; images are `type:version`, so versions must exist for that image. */
+export const DATABASE_DEFAULTS: Record<Database['type'], DatabaseDefaults> = {
+  postgresql: { version: '16', port: 5432, user: true, password: true, database: true },
+  mysql: { version: '8', port: 3306, user: true, password: true, database: true },
+  mariadb: { version: '11', port: 3306, user: true, password: true, database: true },
+  mongodb: { version: '7', port: 27017, user: true, password: true, database: true },
+  redis: { version: '7', port: 6379, user: false, password: true, database: false },
+  sqlite: { user: false, password: false, database: false },
+};
+
+/** Only ask what applies to this database type, with defaults that are valid for it. */
+export function databasePrompts(type: Database['type']): prompts.PromptObject[] {
+  const d = DATABASE_DEFAULTS[type];
+  const list: prompts.PromptObject[] = [
+    { type: 'text', name: 'name', message: 'Name for this database (optional)', initial: 'db' },
+  ];
+  if (d.version) {
+    list.push({ type: 'text', name: 'version', message: `Version (e.g. ${d.version})`, initial: d.version });
+  }
+  if (d.port !== undefined) {
+    list.push({ type: 'number', name: 'port', message: 'Port', initial: d.port });
+  }
+  if (d.user) {
+    list.push({ type: 'text', name: 'user', message: 'User (use ${DB_USER} for .env)', initial: '${DB_USER}' });
+  }
+  if (d.password) {
+    list.push({ type: 'text', name: 'password', message: 'Password (use ${DB_PASSWORD} for .env)', initial: '${DB_PASSWORD}' });
+  }
+  if (d.database) {
+    list.push({ type: 'text', name: 'database', message: 'Database name', initial: 'myapp' });
+  }
+  if (type === 'sqlite') {
+    list.push({ type: 'text', name: 'database', message: 'Database file path', initial: './dev.sqlite3' });
+  }
+  return list;
+}
+
+interface ServiceDefaults {
+  version?: string;
+  port?: number;
+  managementPort?: number;
+}
+
+/** Defaults for well-known services; anything else starts with no pre-filled version or port. */
+export const SERVICE_DEFAULTS: Record<string, ServiceDefaults> = {
+  rabbitmq: { version: '3.12', port: 5672, managementPort: 15672 },
+  redis: { version: '7', port: 6379 },
+  memcached: { version: '1.6', port: 11211 },
+};
+
+export function servicePrompts(defaults: ServiceDefaults): prompts.PromptObject[] {
+  const list: prompts.PromptObject[] = [
+    { type: 'text', name: 'version', message: 'Version', initial: defaults.version },
+    { type: 'number', name: 'port', message: 'Port', initial: defaults.port },
+  ];
+  if (defaults.managementPort !== undefined) {
+    list.push({
+      type: 'number',
+      name: 'management_port',
+      message: 'Management port (optional, 0 to skip)',
+      initial: defaults.managementPort,
+    });
+  }
+  return list;
 }
 
 export async function getDefaultProjectName(projectRoot: string): Promise<string> {
@@ -65,7 +141,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
         initial: '1.0.0',
       },
     ],
-    { onCancel: () => process.exit(0) }
+    { onCancel: exitOnCancel }
   );
 
   const addDeps = await prompts(
@@ -75,7 +151,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
       message: 'Add dependencies? (optional)',
       initial: true,
     },
-    { onCancel: () => process.exit(0) }
+    { onCancel: exitOnCancel }
   );
 
   const dependencies: Dependency[] = [];
@@ -88,7 +164,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
         choices: DEPENDENCY_TYPES.map((t) => ({ title: t, value: t })),
         min: 1,
       },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     for (const type of depTypes.types as string[]) {
       const cmd = await prompts(
@@ -106,7 +182,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
             initial: DEFAULT_DEPENDENCY_COMMANDS[type] ?? '',
           },
         ],
-        { onCancel: () => process.exit(0) }
+        { onCancel: exitOnCancel }
       );
       if (cmd.command?.trim()) {
         dependencies.push({ type: type as Dependency['type'], command: cmd.command.trim(), path: cmd.path?.trim() || '.' });
@@ -124,7 +200,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
         message: databases.length === 0 ? 'Add a database? (optional)' : 'Add another database?',
         initial: databases.length === 0 ? false : false,
       },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (!addDb.value) break;
 
@@ -135,38 +211,23 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
         message: 'Database type',
         choices: [...DATABASE_TYPES.map((t) => ({ title: t, value: t })), { title: 'None', value: 'none' }],
       },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (dbChoice.type === 'none') break;
 
-    const DB_DEFAULT_PORTS: Record<string, number> = {
-      postgresql: 5432, mysql: 3306, mariadb: 3306, mongodb: 27017, redis: 6379, sqlite: 0,
-    };
-    const dbPrompts: prompts.PromptObject[] = [
-      { type: 'text', name: 'name', message: 'Database name (optional)', initial: 'db' },
-      { type: 'text', name: 'version', message: 'Version (e.g. 15 for Postgres)', initial: '15' },
-      { type: 'number', name: 'port', message: 'Port', initial: DB_DEFAULT_PORTS[dbChoice.type] ?? 5432 },
-      { type: 'text', name: 'host', message: 'Host', initial: 'localhost' },
-      { type: 'text', name: 'user', message: 'User (use ${DB_USER} for .env)', initial: '${DB_USER}' },
-      { type: 'text', name: 'password', message: 'Password (use ${DB_PASSWORD} for .env)', initial: '${DB_PASSWORD}' },
-    ];
-    if (dbChoice.type !== 'redis' && dbChoice.type !== 'sqlite') {
-      dbPrompts.push({ type: 'text', name: 'database', message: 'Database name', initial: 'myapp' });
-    }
-    const dbAnswers = await prompts(dbPrompts, { onCancel: () => process.exit(0) });
+    const dbAnswers = await prompts(databasePrompts(dbChoice.type as Database['type']), { onCancel: exitOnCancel });
     const db: Database = {
       type: dbChoice.type as Database['type'],
       name: dbAnswers.name || undefined,
       version: dbAnswers.version || undefined,
       port: dbAnswers.port,
-      host: dbAnswers.host || 'localhost',
       user: dbAnswers.user || undefined,
       password: dbAnswers.password || undefined,
       database: dbAnswers.database || undefined,
     };
     const addMigrations = await prompts(
       { type: 'confirm', name: 'value', message: 'Add migrations?', initial: false },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (addMigrations.value) {
       const mig = await prompts(
@@ -174,13 +235,13 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
           { type: 'text', name: 'path', message: 'Migrations path', initial: './migrations' },
           { type: 'text', name: 'command', message: 'Migrations command', initial: 'npm run migrate' },
         ],
-        { onCancel: () => process.exit(0) }
+        { onCancel: exitOnCancel }
       );
       db.migrations = [{ path: mig.path || './migrations', command: mig.command || 'npm run migrate' }];
     }
     const addSeed = await prompts(
       { type: 'confirm', name: 'value', message: 'Add seed command?', initial: false },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (addSeed.value) {
       const seedCmd = await prompts(
@@ -188,7 +249,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
           { type: 'text', name: 'command', message: 'Seed command', initial: 'npm run seed' },
           { type: 'text', name: 'path', message: 'Seed path', initial: '.' },
         ],
-        { onCancel: () => process.exit(0) }
+        { onCancel: exitOnCancel }
       );
       db.seed = { command: seedCmd.command || 'npm run seed', path: seedCmd.path?.trim() || '.' };
     }
@@ -205,25 +266,23 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
         message: services.length === 0 ? 'Add a service (e.g. RabbitMQ, Redis)? (optional)' : 'Add another service?',
         initial: false,
       },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (!addService.value) break;
 
-    const svc = await prompts(
-      [
-        { type: 'text', name: 'type', message: 'Service type', initial: 'rabbitmq' },
-        { type: 'text', name: 'version', message: 'Version', initial: '3.12' },
-        { type: 'number', name: 'port', message: 'Port', initial: 5672 },
-        { type: 'number', name: 'management_port', message: 'Management port (optional, 0 to skip)', initial: 15672 },
-      ],
-      { onCancel: () => process.exit(0) }
+    const svcType = await prompts(
+      { type: 'text', name: 'type', message: 'Service type (e.g. rabbitmq, redis)', initial: 'rabbitmq' },
+      { onCancel: exitOnCancel }
     );
+    const svcDefaults = SERVICE_DEFAULTS[svcType.type?.trim().toLowerCase()] ?? {};
+    const svcDetails = await prompts(servicePrompts(svcDefaults), { onCancel: exitOnCancel });
+    const svc: Record<string, any> = { ...svcType, ...svcDetails };
     if (svc.type?.trim()) {
       services.push({
-        type: svc.type.trim(),
+        // Image names must be lowercase for Docker, and the type is used as the image name.
+        type: svc.type.trim().toLowerCase(),
         version: svc.version || undefined,
         port: svc.port,
-        host: 'localhost',
         ...(svc.management_port && svc.management_port > 0 ? { management_port: svc.management_port } : {}),
       });
     }
@@ -231,7 +290,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
 
   const addEnv = await prompts(
     { type: 'confirm', name: 'value', message: 'Add environment variables? (optional)', initial: true },
-    { onCancel: () => process.exit(0) }
+    { onCancel: exitOnCancel }
   );
 
   let env: Record<string, string> = {};
@@ -239,71 +298,18 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     env = { NODE_ENV: 'development' };
     if (databases.length > 0 && databases[0].type === 'postgresql') {
       const db = databases[0];
-      env.DATABASE_URL = `postgresql://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${db.port || 5432}/${db.database || 'myapp'}`;
+      env.DATABASE_URL = `postgresql://\${DB_USER}:\${DB_PASSWORD}@localhost:${db.port || 5432}/${db.database || 'myapp'}`;
     }
   }
 
   const dockerEnabled = await prompts(
     { type: 'confirm', name: 'value', message: 'Enable Docker Compose generation? (optional)', initial: true },
-    { onCancel: () => process.exit(0) }
+    { onCancel: exitOnCancel }
   );
 
   const docker = dockerEnabled.value
-    ? { enabled: true, output_file: 'docker-compose.yml', network_name: 'dev-network' }
-    : { enabled: false, output_file: 'docker-compose.yml', network_name: 'dev-network' };
-
-  const snapshot: DevEnvConfig['snapshot'] = {
-    include_databases: true,
-    include_volumes: true,
-    exclude_paths: ['node_modules', '.git', 'dist', 'build'],
-  };
-
-  const health_checks: HealthCheck[] = [];
-  const healthEligible = databases.filter(
-    (d) => d.type === 'postgresql' || d.type === 'mysql' || d.type === 'mariadb' || d.type === 'mongodb' || d.type === 'redis'
-  );
-  if (healthEligible.length > 0) {
-    const addHealth = await prompts(
-      {
-        type: 'confirm',
-        name: 'value',
-        message: healthEligible.length === 1
-          ? `Add a health check for ${healthEligible[0].name || healthEligible[0].type}? (optional)`
-          : `Add health checks for your ${healthEligible.length} databases? (optional)`,
-        initial: true,
-      },
-      { onCancel: () => process.exit(0) }
-    );
-    if (addHealth.value) {
-      const DB_DEFAULT_HC_PORTS: Record<string, number> = {
-        postgresql: 5432, mysql: 3306, mariadb: 3306, mongodb: 27017, redis: 6379,
-      };
-      for (const db of healthEligible) {
-        const port = db.port ?? DB_DEFAULT_HC_PORTS[db.type] ?? 5432;
-        if (db.type === 'redis') {
-          health_checks.push({ name: db.name || 'redis', type: 'redis', url: `redis://${db.host || 'localhost'}:${port}` });
-        } else if (db.type === 'postgresql') {
-          health_checks.push({
-            name: db.name || 'database',
-            type: 'postgresql',
-            connection_string: `postgresql://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${port}/${db.database || 'myapp'}`,
-          });
-        } else if (db.type === 'mysql' || db.type === 'mariadb') {
-          health_checks.push({
-            name: db.name || 'database',
-            type: db.type,
-            connection_string: `mysql://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${port}/${db.database || 'myapp'}`,
-          });
-        } else if (db.type === 'mongodb') {
-          health_checks.push({
-            name: db.name || 'database',
-            type: 'mongodb',
-            connection_string: `mongodb://\${DB_USER}:\${DB_PASSWORD}@${db.host || 'localhost'}:${port}/${db.database || 'myapp'}`,
-          });
-        }
-      }
-    }
-  }
+    ? { enabled: true, output_file: 'docker-compose.yml', network_name: 'dev-network', persist_data: true }
+    : { enabled: false, output_file: 'docker-compose.yml', network_name: 'dev-network', persist_data: true };
 
   const raw: DevEnvConfig = {
     name: basic.name?.trim() || defaultName,
@@ -312,8 +318,7 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     databases,
     services,
     env,
-    health_checks,
-    snapshot,
+    health_checks: [],
     docker,
   };
 
@@ -335,7 +340,7 @@ export async function runInit(projectRoot: string): Promise<void> {
   if (await fileExists(configPath)) {
     const overwrite = await prompts(
       { type: 'confirm', name: 'value', message: 'File .dev-env.yml already exists. Overwrite?', initial: false },
-      { onCancel: () => process.exit(0) }
+      { onCancel: exitOnCancel }
     );
     if (!overwrite.value) {
       logger.info('Skipped. Existing .dev-env.yml was not changed.');
@@ -347,4 +352,49 @@ export async function runInit(projectRoot: string): Promise<void> {
   const yamlContent = yaml.dump(config, { lineWidth: -1 });
   await writeFile(configPath, yamlContent);
   logger.success(`Created ${configPath}`);
+
+  await offerEnvExample(projectRoot, yamlContent);
+}
+
+/** Names of the `${VAR}` references in a config, in order of first use. */
+export function referencedVariables(configText: string): string[] {
+  const names = new Set<string>();
+  for (const match of configText.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) names.add(match[1]);
+  return [...names];
+}
+
+/**
+ * The wizard writes `${DB_USER}`-style references, so the first `envkit setup` would warn about
+ * unset variables. Offer a `.env.example` that lists them (never overwriting an existing one).
+ */
+async function offerEnvExample(projectRoot: string, configText: string): Promise<void> {
+  const variables = referencedVariables(configText);
+  const examplePath = path.join(projectRoot, '.env.example');
+  if (variables.length === 0 || (await fileExists(examplePath))) return;
+
+  const answer = await prompts(
+    {
+      type: 'confirm',
+      name: 'value',
+      message: `Create .env.example listing the ${variables.length} variable(s) this config uses?`,
+      initial: true,
+    },
+    { onCancel: exitOnCancel }
+  );
+  if (!answer.value) {
+    logger.info(`Define these variables in .env before running envkit setup: ${variables.join(', ')}`);
+    return;
+  }
+  try {
+    // 'wx' = create only if absent: a file that appeared while the prompt was open is never replaced.
+    await fs.outputFile(examplePath, variables.map((name) => `${name}=`).join('\n') + '\n', { flag: 'wx' });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+      logger.info('.env.example already exists, so it was left unchanged.');
+      return;
+    }
+    throw err;
+  }
+  logger.success(`Created ${examplePath}`);
+  logger.info('Copy it to .env and fill in the values (keep .env out of version control).');
 }
