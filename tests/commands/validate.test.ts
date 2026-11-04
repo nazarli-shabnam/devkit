@@ -93,4 +93,23 @@ describe('validate command', () => {
 
     await expect(runValidate({ strict: true })).resolves.toBeUndefined();
   });
+
+  describe('unknown keys', () => {
+    const typoConfig = ['name: x', 'dependancies:', '  - type: npm', '    command: npm install', ''].join('\n');
+
+    it('warns about a misspelled key but still passes without --strict', async () => {
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), typoConfig);
+      process.chdir(tempDir);
+
+      await expect(runValidate()).resolves.toBeUndefined();
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('Did you mean "dependencies"?'));
+    });
+
+    it('fails with --strict', async () => {
+      await fs.writeFile(path.join(tempDir, '.dev-env.yml'), typoConfig);
+      process.chdir(tempDir);
+
+      await expect(runValidate({ strict: true })).rejects.toThrow(/--strict/);
+    });
+  });
 });
