@@ -142,17 +142,18 @@ describe('review fixes', () => {
   });
 
   describe('wizard', () => {
-    const stdout = process.stdout as NodeJS.WriteStream & { isTTY?: boolean };
-    const stdin = process.stdin as NodeJS.ReadStream & { isTTY?: boolean };
-    const tty = { out: stdout.isTTY, in: stdin.isTTY };
+    // defineProperty (writable) rather than assignment: another test file may have left isTTY read-only.
+    const setTty = (out: unknown, inn: unknown): void => {
+      Object.defineProperty(process.stdout, 'isTTY', { value: out, configurable: true, writable: true, enumerable: true });
+      Object.defineProperty(process.stdin, 'isTTY', { value: inn, configurable: true, writable: true, enumerable: true });
+    };
+    const tty = { out: process.stdout.isTTY, in: process.stdin.isTTY };
     beforeEach(() => {
-      stdout.isTTY = true;
-      stdin.isTTY = true;
+      setTty(true, true);
       (init.isInteractive as unknown as jest.Mock).mockReturnValue(true);
     });
     afterEach(() => {
-      stdout.isTTY = tty.out;
-      stdin.isTTY = tty.in;
+      setTty(tty.out, tty.in);
     });
 
     it('stores the service type in lowercase (Docker image names must be lowercase)', async () => {
