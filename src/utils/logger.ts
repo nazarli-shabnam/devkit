@@ -33,7 +33,16 @@ class Logger {
       typeof arg === 'object' ? util.inspect(arg, { depth: 2 }) : String(arg)
     ).join(' ');
     
-    return `[${timestamp}] [${level}] ${message}${formattedArgs ? ' ' + formattedArgs : ''}`;
+    const text = `${message}${formattedArgs ? ' ' + formattedArgs : ''}`;
+
+    // Verbose mode keeps the full diagnostic format (timestamp + level) for bug reports.
+    if (this.level <= LogLevel.DEBUG) {
+      return `[${timestamp}] [${level}] ${text}`;
+    }
+    // Normal output reads like a CLI, not a log file: plain text, with a label only where
+    // the severity matters (and not twice when the message already starts with it).
+    const label = level === 'WARN' ? 'Warning' : level === 'ERROR' ? 'Error' : '';
+    return label && !text.startsWith(label) ? `${label}: ${text}` : text;
   }
 
   debug(message: string, ...args: any[]): void {
