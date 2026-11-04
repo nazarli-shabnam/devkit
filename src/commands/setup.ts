@@ -73,7 +73,7 @@ export async function runSetup(options: SetupOptions = {}): Promise<void> {
   const projectRoot = await findProjectRoot(process.cwd());
   logger.debug(`Project root: ${projectRoot}`);
 
-  const config: DevEnvConfig = await loadConfigOrPromptInit(projectRoot);
+  const config: DevEnvConfig = await loadConfigOrPromptInit(projectRoot, { offerInit: !dryRun });
   checkConfigWarnings(config);
 
   const env = config.env ?? {};
