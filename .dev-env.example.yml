@@ -36,7 +36,7 @@ services:
   # - type: rabbitmq
   #   version: "3.12"
   #   port: 5672
-  #   management_port: 15672
+  #   management_port: 15672   # rabbitmq: the generated image uses the -management tag so this UI is served
 
 # Environment variables (use .env file for secrets)
 env:

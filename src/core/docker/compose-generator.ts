@@ -168,6 +168,15 @@ function databaseToComposeService(
   };
 }
 
+/**
+ * The RabbitMQ management UI only ships in the `-management` image variants, so a
+ * published `management_port` would otherwise serve nothing. Pick the matching tag.
+ */
+function rabbitmqManagementVersion(version: string | undefined): string {
+  if (!version) return 'management';
+  return version.includes('management') ? version : `${version}-management`;
+}
+
 function serviceToComposeService(
   svc: Service,
   index: number,
@@ -181,7 +190,7 @@ function serviceToComposeService(
   return {
     name,
     image: svc.type,
-    version: svc.version,
+    version: svc.type === 'rabbitmq' && svc.management_port ? rabbitmqManagementVersion(svc.version) : svc.version,
     ports,
     env: {},
     healthcheck,
