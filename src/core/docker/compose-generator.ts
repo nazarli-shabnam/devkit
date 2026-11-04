@@ -10,6 +10,10 @@ export interface ComposeService {
   version?: string;
   ports: string[];
   env: Record<string, string>;
+  /** Pre-rendered YAML-safe `KEY=value` list items (double-quoted, `$` escaped for Compose), set at render time */
+  envLines?: string[];
+  /** `image[:version]`, set at render time */
+  imageRef?: string;
   /** Pre-rendered YAML fragment for healthcheck (indented), or undefined to omit */
   healthcheck?: string;
   /** Container data directory to persist in a named volume (databases only) */
@@ -44,14 +48,26 @@ const DB_HEALTHCHECK_TESTS: Record<string, string[]> = {
   redis: ['CMD', 'redis-cli', 'ping'],
 };
 
+/**
+ * Render one `KEY=value` environment entry as a double-quoted YAML scalar.
+ * JSON string syntax is valid YAML, so quotes/colons/`#` in values stay literal;
+ * A literal `$` is doubled because Compose would otherwise interpolate it, but a plain `${NAME}`
+ * is kept: it is a reference that was left unresolved (the variable was unset when generating),
+ * and Compose can still fill it in from its own environment/`.env` when the stack starts.
+ */
+export function renderEnvEntry(key: string, value: string): string {
+  const composeValue = value.replace(/\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$/g, (token) => (token === '$' ? '$$' : token));
+  return JSON.stringify(`${key}=${composeValue}`);
+}
+
 function renderHealthcheckFragment(test: string[], hc?: HealthCheck): string {
   const interval = hc?.interval ?? '10s';
   const timeout = hc?.timeout ?? '5s';
   const retries = hc?.retries ?? 5;
   return [
     `      test: ${JSON.stringify(test)}`,
-    `      interval: ${interval}`,
-    `      timeout: ${timeout}`,
+    `      interval: ${JSON.stringify(String(interval))}`,
+    `      timeout: ${JSON.stringify(String(timeout))}`,
     `      retries: ${retries}`,
   ].join('\n');
 }
@@ -242,6 +258,13 @@ export function generateComposeContent(config: DevEnvConfig, templatesDir: strin
   const networkName = config.docker?.network_name ?? 'dev-network';
 
   const template = loadComposeTemplate(templatesDir);
-  const compiled = Handlebars.compile(template);
-  return compiled({ services, networkName, volumeNames });
+  // noEscape: output is YAML, not HTML; HTML-escaping would corrupt values like `p&ss=w'rd`.
+  const compiled = Handlebars.compile(template, { noEscape: true });
+  for (const s of services) {
+    s.envLines = Object.entries(s.env).map(([k, v]) => renderEnvEntry(k, v));
+    s.imageRef = s.version ? `${s.image}:${s.version}` : s.image;
+  }
+  // `yq` emits any free-form string as a double-quoted YAML scalar (JSON syntax is valid YAML),
+  // so values can never break out of their line or inject keys.
+  return compiled({ services, networkName, volumeNames }, { helpers: { yq: (v: unknown) => JSON.stringify(String(v)) } });
 }

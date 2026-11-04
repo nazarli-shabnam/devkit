@@ -1,17 +1,17 @@
 services:
 {{#each services}}
-  {{name}}:
-    image: {{image}}{{#if version}}:{{version}}{{/if}}
+  {{{yq name}}}:
+    image: {{{yq imageRef}}}
     {{#if ports}}
     ports:
       {{#each ports}}
-      - "{{this}}"
+      - {{{yq this}}}
       {{/each}}
     {{/if}}
-    {{#if env}}
+    {{#if envLines}}
     environment:
-      {{#each env}}
-      - {{@key}}={{this}}
+      {{#each envLines}}
+      - {{{this}}}
       {{/each}}
     {{/if}}
     {{#if volumes}}
@@ -25,7 +25,7 @@ services:
 {{{healthcheck}}}
     {{/if}}
     networks:
-      - {{../networkName}}
+      - {{{yq ../networkName}}}
 {{/each}}
 
 {{#if volumeNames}}
@@ -36,5 +36,5 @@ volumes:
 
 {{/if}}
 networks:
-  {{networkName}}:
-    name: {{networkName}}
+  {{{yq networkName}}}:
+    name: {{{yq networkName}}}

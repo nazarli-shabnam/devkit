@@ -379,7 +379,7 @@ describe('CLI integration', () => {
       const content = fs.readFileSync(path.join(tempDir, 'docker-compose.yml'), 'utf-8');
       expect(content).toContain('healthcheck:');
       expect(content).toMatch(/pg_isready|redis-cli|ping/);
-      expect(content).toContain('interval: 10s');
+      expect(content).toContain('interval: "10s"');
     } finally {
       fs.removeSync(tempDir);
     }

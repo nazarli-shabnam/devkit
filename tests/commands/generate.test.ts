@@ -118,7 +118,7 @@ describe('generate command', () => {
     expect(content).toContain('healthcheck:');
     expect(content).toMatch(/pg_isready|postgres/);
     expect(content).toMatch(/redis-cli|ping/);
-    expect(content).toContain('interval: 10s');
+    expect(content).toContain('interval: "10s"');
   });
 
   it('writes to cwd (not project root) when run from subdirectory', async () => {
