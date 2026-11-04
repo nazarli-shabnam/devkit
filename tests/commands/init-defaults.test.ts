@@ -100,7 +100,7 @@ describe('wizard end to end', () => {
     jest.restoreAllMocks();
   });
 
-  it('pressing Enter through a redis database yields an image that exists (redis:7)', async () => {
+  it('redis database with version 7 and port 6379 yields redis:7', async () => {
     prompts.inject([...common, true, 'redis', 'cache', '7', 6379, '', ...tail]);
     await runInit(root);
     const config = await readConfig();

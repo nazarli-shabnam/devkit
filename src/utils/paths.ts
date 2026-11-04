@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 
 /**
@@ -25,7 +26,38 @@ export function resolveOutputPath(
   const explicit = output?.trim();
   if (!explicit) return path.resolve(projectRoot, defaultName);
   assertRelativeOutputInside(explicit, cwd);
-  return path.resolve(cwd, explicit);
+  const resolved = path.resolve(cwd, explicit);
+  if (!path.isAbsolute(explicit)) assertRealPathInside(resolved, cwd, `Output path "${explicit}"`);
+  return resolved;
+}
+
+/**
+ * `target` with symlinks resolved. The target usually does not exist yet, so the nearest existing
+ * ancestor is resolved and the missing tail is appended.
+ */
+export function resolveThroughSymlinks(target: string): string {
+  let current = path.resolve(target);
+  const missing: string[] = [];
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(current), ...missing.reverse());
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return path.resolve(target);
+      missing.push(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
+/**
+ * A path that looks inside `baseDir` can still leave it through a symlink (`linked -> /elsewhere`).
+ * Compare where both really are, so a symlinked directory cannot redirect a write out of the project.
+ */
+export function assertRealPathInside(target: string, baseDir: string, label: string): void {
+  if (!isInsideDir(resolveThroughSymlinks(target), resolveThroughSymlinks(baseDir))) {
+    throw new Error(`${label} resolves outside ${baseDir} through a symbolic link. Use an absolute path if intended.`);
+  }
 }
 
 /** A path for messages: relative to `cwd` when it is inside it, absolute otherwise. */

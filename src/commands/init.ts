@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as fs from 'fs-extra';
 import * as yaml from 'js-yaml';
 import prompts from 'prompts';
 import { fileExists, readJson, writeFile } from '../utils/file-ops';
@@ -278,7 +279,8 @@ async function runWizard(projectRoot: string): Promise<DevEnvConfig> {
     const svc: Record<string, any> = { ...svcType, ...svcDetails };
     if (svc.type?.trim()) {
       services.push({
-        type: svc.type.trim(),
+        // Image names must be lowercase for Docker, and the type is used as the image name.
+        type: svc.type.trim().toLowerCase(),
         version: svc.version || undefined,
         port: svc.port,
         ...(svc.management_port && svc.management_port > 0 ? { management_port: svc.management_port } : {}),
@@ -383,7 +385,16 @@ async function offerEnvExample(projectRoot: string, configText: string): Promise
     logger.info(`Define these variables in .env before running envkit setup: ${variables.join(', ')}`);
     return;
   }
-  await writeFile(examplePath, variables.map((name) => `${name}=`).join('\n') + '\n');
+  try {
+    // 'wx' = create only if absent: a file that appeared while the prompt was open is never replaced.
+    await fs.outputFile(examplePath, variables.map((name) => `${name}=`).join('\n') + '\n', { flag: 'wx' });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+      logger.info('.env.example already exists, so it was left unchanged.');
+      return;
+    }
+    throw err;
+  }
   logger.success(`Created ${examplePath}`);
   logger.info('Copy it to .env and fill in the values (keep .env out of version control).');
 }

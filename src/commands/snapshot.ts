@@ -9,6 +9,7 @@ import {
   sanitizeSnapshotName,
   snapshotExists,
   uniqueSnapshotName,
+  reserveSnapshotName,
 } from '../core/snapshot/storage';
 import { isInteractive } from './init';
 import { fileExists, readFile, writeFile } from '../utils/file-ops';
@@ -106,7 +107,7 @@ export async function runSnapshotRestore(name: string, options: SnapshotRestoreO
     const currentYaml = await readFile(configPath);
     const backup = await createSnapshot(
       projectRoot,
-      await uniqueSnapshotName(projectRoot, `pre-restore-${timestamp()}`),
+      await reserveSnapshotName(projectRoot, `pre-restore-${timestamp()}`),
       currentYaml
     );
     logger.info(`Backed up current config to snapshot "${backup.name}".`);

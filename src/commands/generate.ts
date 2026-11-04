@@ -4,7 +4,7 @@ import { checkConfigWarnings } from '../core/config/validator';
 import { generateComposeContent } from '../core/docker/compose-generator';
 import { logger } from '../utils/logger';
 import { writeFile } from '../utils/file-ops';
-import { displayPath, isInsideDir, resolveOutputPath } from '../utils/paths';
+import { assertRealPathInside, displayPath, isInsideDir, resolveOutputPath } from '../utils/paths';
 import { confirmOverwrite, generatedHeader } from '../utils/overwrite';
 
 export interface GenerateOptions {
@@ -32,9 +32,15 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
 
   // No --output: the config's docker.output_file, relative to the project root. It comes from a
   // file that may have been shared by someone else, so it must stay inside the project.
-  const configuredName = config.docker?.output_file ?? 'docker-compose.yml';
-  if (!options.output?.trim() && (path.isAbsolute(configuredName) || !isInsideDir(path.resolve(projectRoot, configuredName), projectRoot))) {
-    throw new Error(`docker.output_file "${configuredName}" must be a path inside the project. Use --output to write elsewhere.`);
+  // (`||`, not `??`: an empty string must fall back to the default instead of naming the project root.)
+  const configuredName = config.docker?.output_file?.trim() || 'docker-compose.yml';
+  if (!options.output?.trim()) {
+    const configuredPath = path.resolve(projectRoot, configuredName);
+    if (path.isAbsolute(configuredName) || !isInsideDir(configuredPath, projectRoot)) {
+      throw new Error(`docker.output_file "${configuredName}" must be a path inside the project. Use --output to write elsewhere.`);
+    }
+    // ...and a symlinked directory inside the project must not redirect the write out of it.
+    assertRealPathInside(configuredPath, projectRoot, `docker.output_file "${configuredName}"`);
   }
   const outPath = resolveOutputPath(options.output, configuredName, projectRoot);
 
