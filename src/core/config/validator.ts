@@ -1,5 +1,6 @@
 import { DevEnvConfig, DevEnvConfigSchema } from '../../types/config';
 import { logger } from '../../utils/logger';
+import { effectiveDbPort } from './defaults';
 
 /**
  * Validate configuration object
@@ -76,24 +77,27 @@ export function checkConfigWarnings(config: DevEnvConfig): string[] {
     }
   });
 
-  // Check for port conflicts
-  const ports = new Set<number>();
-  config.databases?.forEach(db => {
-    if (db.port) {
-      if (ports.has(db.port)) {
-        warn(`Port ${db.port} is used by multiple services. This may cause conflicts.`);
-      }
-      ports.add(db.port);
+  // Check for host-port conflicts. Databases fall back to their type's default port
+  // (that is what the generated compose publishes), and services also publish management_port.
+  const portOwners = new Map<number, string>();
+  const claimPort = (port: number | undefined, owner: string): void => {
+    if (port === undefined) return;
+    const existing = portOwners.get(port);
+    if (existing) {
+      warn(`Port ${port} is used by multiple services (${existing} and ${owner}). This may cause conflicts.`);
+    } else {
+      portOwners.set(port, owner);
     }
+  };
+
+  config.databases?.forEach((db, index) => {
+    claimPort(effectiveDbPort(db), `database ${db.name ?? `${db.type} #${index + 1}`}`);
   });
 
-  config.services?.forEach(service => {
-    if (service.port) {
-      if (ports.has(service.port)) {
-        warn(`Port ${service.port} is used by multiple services. This may cause conflicts.`);
-      }
-      ports.add(service.port);
-    }
+  config.services?.forEach((service, index) => {
+    const owner = `service ${service.type} #${index + 1}`;
+    claimPort(service.port, owner);
+    claimPort(service.management_port, `${owner} management`);
   });
 
   return warnings;

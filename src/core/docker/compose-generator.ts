@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { DevEnvConfig, Database, Service, HealthCheck } from '../../types/config';
 import { logger } from '../../utils/logger';
+import { effectiveDbPort } from '../config/defaults';
 
 export interface ComposeService {
   name: string;
@@ -129,14 +130,11 @@ function databaseToComposeService(
   const image = DB_IMAGES[db.type];
   if (!image) return null;
 
-  const DB_DEFAULT_PORTS: Record<string, number> = {
-    postgresql: 5432, mysql: 3306, mariadb: 3306, mongodb: 27017, redis: 6379,
-  };
   const name = toServiceName(db.name ?? `${db.type}_${index + 1}`.replace(/-/g, '_'));
   if (db.name && name !== db.name) {
     logger.warn(`Database name "${db.name}" is not a valid Compose service name; using "${name}".`);
   }
-  const port = db.port ?? DB_DEFAULT_PORTS[db.type] ?? 5432;
+  const port = effectiveDbPort(db) ?? 5432;
   const ports = [`${port}:${port}`];
 
   const env: Record<string, string> = {};
