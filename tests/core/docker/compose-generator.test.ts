@@ -7,13 +7,13 @@ const templatesDir = path.resolve(__dirname, '../../../templates');
 
 describe('compose-generator', () => {
   describe('generateComposeContent', () => {
-    it('produces valid YAML with version and network when config has no databases or services', () => {
+    it('produces valid YAML (no obsolete version key) with network when config has no databases or services', () => {
       const config = {
         name: 'empty-app',
         docker: { network_name: 'my-network' },
       } as DevEnvConfig;
       const content = generateComposeContent(config, templatesDir);
-      expect(content).toContain('version:');
+      expect(content).not.toMatch(/^version:/m);
       expect(content).toContain('services:');
       expect(content).toContain('my-network');
       expect(content).toContain('networks:');
@@ -232,6 +232,42 @@ describe('compose-generator', () => {
       expect(svc.privileged).toBeUndefined();
       expect(svc.healthcheck.interval).toBe('5s\n    privileged: true');
       expect(svc.healthcheck.timeout).toBe('3s');
+    });
+
+    describe('service name sanitization', () => {
+      const namesOf = (config: Record<string, unknown>): string[] =>
+        Object.keys(
+          require('js-yaml').load(generateComposeContent({ name: 'app', ...config } as DevEnvConfig, templatesDir)).services
+        );
+
+      it('turns namespaced image types into valid service names', () => {
+        expect(namesOf({ services: [{ type: 'bitnami/redis', port: 6379, host: 'localhost' }] })).toEqual(['bitnami_redis_1']);
+        expect(namesOf({ services: [{ type: 'mcr.microsoft.com/mssql/server', host: 'localhost' }] })).toEqual([
+          'mcr.microsoft.com_mssql_server_1',
+        ]);
+      });
+
+      it('sanitizes explicit database names and warns', () => {
+        const warn = jest.spyOn(logger, 'warn').mockImplementation(() => undefined);
+        expect(namesOf({ databases: [{ type: 'postgresql', name: 'my db!', host: 'localhost' }] })).toEqual(['my_db_']);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('my db!'));
+      });
+
+      it('keeps valid names untouched and still de-duplicates', () => {
+        expect(
+          namesOf({
+            databases: [
+              { type: 'postgresql', name: 'app-db', host: 'localhost' },
+              { type: 'postgresql', name: 'app-db', host: 'localhost' },
+            ],
+          })
+        ).toEqual(['app-db', 'app-db_2']);
+      });
+
+      it('never produces an empty or symbol-leading name', () => {
+        expect(namesOf({ databases: [{ type: 'redis', name: '***', host: 'localhost' }] })).toEqual(['service']);
+        expect(namesOf({ databases: [{ type: 'redis', name: '.hidden', host: 'localhost' }] })).toEqual(['hidden']);
+      });
     });
 
     it('throws when templates dir has no docker-compose.hbs', () => {

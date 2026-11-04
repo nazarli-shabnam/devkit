@@ -6,16 +6,29 @@ import { detectOS, getHomeDirectory, getTempDirectory } from '../utils/platform'
 import { logger } from '../utils/logger';
 import { isInteractive } from './init';
 
+/**
+ * Where npm puts global executables: `<prefix>/bin` on macOS/Linux, the prefix itself on Windows.
+ * (`npm bin -g` was removed in npm 9, so the prefix is asked for instead; `npm prefix -g` works
+ * on every npm version.)
+ */
 function getNpmGlobalBin(): string {
+  let prefix: string;
   try {
-    const out = execSync('npm bin -g', { encoding: 'utf-8' });
-    return out.trim();
-  } catch {
+    prefix = execSync('npm prefix -g', { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  } catch (err) {
+    const reason = err instanceof Error ? ` (${err.message.split('\n')[0]})` : '';
     throw new Error(
-      'Could not get npm global bin path. Make sure npm is installed and in your PATH.'
+      `Could not find npm's global install location${reason}. Make sure npm is installed and on your PATH.`
     );
   }
+  if (!prefix) {
+    throw new Error("Could not find npm's global install location: `npm prefix -g` printed nothing.");
+  }
+  return process.platform === 'win32' ? prefix : path.join(prefix, 'bin');
 }
+
+/** npm runs `postinstall` automatically; there a failure must not print errors or fail the install. */
+const isPostinstall = (): boolean => process.env.npm_lifecycle_event === 'postinstall';
 
 function isInPath(pathToCheck: string): boolean {
   const pathEnv = process.env.PATH || process.env.Path || '';
@@ -82,9 +95,11 @@ export async function runPathSetup(): Promise<void> {
   let binPath: string;
   try {
     binPath = getNpmGlobalBin();
-  } catch {
-    // e.g. local install or npm not in PATH during postinstall — do nothing
-    return;
+  } catch (err) {
+    // During `npm install` npm may not be reachable the way we expect: stay quiet there.
+    // When the user ran `envkit path-setup` themselves, tell them why nothing happened.
+    if (isPostinstall()) return;
+    throw err;
   }
 
   if (isInPath(binPath)) {
