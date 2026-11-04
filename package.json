@@ -17,6 +17,7 @@
     "build": "tsc && node -e \"require('fs').copyFileSync('src/utils/load-execa.js','dist/utils/load-execa.js')\"",
     "dev": "ts-node src/cli/index.ts",
     "start": "node dist/cli/index.js",
+    "pretest": "npm run build",
     "test": "jest",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",

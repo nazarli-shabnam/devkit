@@ -87,10 +87,11 @@ export async function runSetup(options: SetupOptions = {}): Promise<void> {
           }
         }
       }
+      // Validate before the dry-run branch so a blank seed command is rejected in both modes.
+      if (db.seed) assertCommand(db.seed.command);
       if (db.seed && !dryRun) {
         const seedPath = db.seed.path ?? '.';
         const cwd = path.resolve(projectRoot, seedPath);
-        assertCommand(db.seed.command);
         logger.step(`Running seed (${db.type}) in ${seedPath}...`);
         await runCommand(db.seed.command, cwd, env);
       } else if (db.seed && dryRun) {

@@ -174,4 +174,16 @@ describe('setup command', () => {
     expect(seedCall).toBeDefined();
     expect(seedCall![2].cwd).toBe(path.resolve(tempDir, './scripts'));
   });
+
+  it('rejects a blank seed command in a dry run too (same rule as a real run)', async () => {
+    await fs.writeFile(
+      path.join(tempDir, '.dev-env.yml'),
+      ['name: setup-test', 'databases:', '  - type: postgresql', '    seed:', "      command: '  '"].join('\n')
+    );
+    process.chdir(tempDir);
+
+    await expect(runSetup({ dryRun: true })).rejects.toThrow(/Empty command/);
+    await expect(runSetup({})).rejects.toThrow(/Empty command/);
+    expect(execFn).not.toHaveBeenCalled();
+  });
 });
