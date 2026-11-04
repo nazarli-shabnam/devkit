@@ -69,11 +69,22 @@ class Logger {
     }
   }
 
+  /** Progress/result lines for people: shown at the default level and below, hidden by `--quiet`. */
   success(message: string): void {
+    if (this.level > LogLevel.INFO) return;
     console.log(this.colors.green + this.colors.bright + `✓ ${message}` + this.colors.reset);
   }
 
+  /**
+   * The requested data itself (e.g. `snapshot list`): always printed to stdout, even with
+   * `--quiet`, so scripts can rely on it.
+   */
+  output(message: string): void {
+    console.log(message);
+  }
+
   step(message: string): void {
+    if (this.level > LogLevel.INFO) return;
     console.log(this.colors.blue + `→ ${message}` + this.colors.reset);
   }
 }
