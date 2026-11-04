@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { findProjectRoot, loadConfigOrPromptInit } from '../core/config/loader';
+import { findProjectRoot, loadConfigOrPromptInit, loadRawConfig } from '../core/config/loader';
 import { checkConfigWarnings } from '../core/config/validator';
 import { generateComposeContent } from '../core/docker/compose-generator';
 import { logger } from '../utils/logger';
@@ -12,6 +12,13 @@ export interface GenerateOptions {
   dryRun?: boolean;
   /** Overwrite an existing file that envkit did not generate. */
   force?: boolean;
+}
+
+/** `${NAME}` references left in generated compose text (`$${NAME}` escapes excluded). */
+function composeVariables(content: string): string[] {
+  const names = new Set<string>();
+  for (const m of content.matchAll(/(?<!\$)\$\{([A-Za-z_][A-Za-z0-9_]*)/g)) names.add(m[1]);
+  return [...names];
 }
 
 function getTemplatesDir(): string {
@@ -45,7 +52,7 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
   const outPath = resolveOutputPath(options.output, configuredName, projectRoot);
 
   const templatesDir = getTemplatesDir();
-  const content = generatedHeader('docker compose') + generateComposeContent(config, templatesDir);
+  const content = generatedHeader('docker compose') + generateComposeContent(config, templatesDir, await loadRawConfig(projectRoot));
 
   if (options.dryRun) {
     // Print to stdout without writing, so it can be inspected or piped.
@@ -60,4 +67,12 @@ export async function runGenerate(options: GenerateOptions = {}): Promise<void> 
 
   await writeFile(outPath, content);
   logger.success(`Wrote ${displayPath(outPath)}`);
+
+  const variables = composeVariables(content);
+  if (variables.length > 0) {
+    logger.info(
+      `The compose file refers to ${variables.join(', ')}: Compose reads them from a .env file next to it or from your shell, ` +
+        'so keep .env alongside docker-compose.yml (and out of version control).'
+    );
+  }
 }

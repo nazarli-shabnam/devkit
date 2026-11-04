@@ -107,7 +107,8 @@ describe('wizard end to end', () => {
     expect(config.databases[0]).toMatchObject({ type: 'redis', version: '7', port: 6379 });
     expect(config.databases[0].user).toBeUndefined();
     const compose = generateComposeContent(config, path.resolve(__dirname, '../../templates'));
-    expect(compose).toContain('image: redis:7');
+    // Parse instead of matching text: values are emitted as quoted YAML scalars (`image: "redis:7"`).
+    expect((yaml.load(compose) as { services: Record<string, { image: string }> }).services.cache.image).toBe('redis:7');
     expect(await fs.pathExists(path.join(root, '.env.example'))).toBe(false); // no ${VAR} used
   });
 
