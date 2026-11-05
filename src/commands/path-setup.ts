@@ -66,24 +66,22 @@ $newPath = $current + $PathToAdd
   }
 }
 
-function addToPathUnix(binPath: string): void {
+export function addToPathUnix(binPath: string): void {
   // Validate binPath to prevent shell metacharacter injection in rc files
   if (/[`$"\\;|&!(){}]/.test(binPath)) {
     throw new Error(`Unsafe characters in bin path: ${binPath}`);
   }
   const home = getHomeDirectory();
   const exportLine = `\nexport PATH="$PATH:${binPath}"\n`;
-  const candidates = [path.join(home, '.zshrc'), path.join(home, '.bashrc'), path.join(home, '.profile')];
-  let target: string | null = null;
-  for (const f of candidates) {
-    if (fs.existsSync(f)) {
-      target = f;
-      break;
-    }
-  }
-  if (!target) {
-    target = path.join(home, '.profile');
-  }
+  // Update the rc file of the shell the user actually runs; otherwise a user with both
+  // .zshrc and .bashrc would get the wrong one. Unknown shells fall back to the first file that exists.
+  const shellRc: Record<string, string> = { zsh: '.zshrc', bash: '.bashrc' };
+  const preferred = shellRc[path.basename(process.env.SHELL || '')];
+  const candidates = [preferred, '.zshrc', '.bashrc', '.profile']
+    .filter((f): f is string => Boolean(f))
+    .map((f) => path.join(home, f));
+  const target =
+    (preferred ? candidates[0] : candidates.find((f) => fs.existsSync(f))) ?? path.join(home, '.profile');
   let content = fs.existsSync(target) ? fs.readFileSync(target, 'utf-8') : '';
   if (content.includes(binPath)) {
     return;
