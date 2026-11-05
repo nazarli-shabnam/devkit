@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { logger } from '../../src/utils/logger';
 
@@ -12,9 +14,15 @@ jest.mock('child_process', () => ({
 
 jest.mock('prompts', () => jest.fn());
 
+jest.mock('../../src/utils/platform', () => ({
+  ...jest.requireActual('../../src/utils/platform'),
+  getHomeDirectory: jest.fn(),
+}));
+
 import { execSync } from 'child_process';
 import prompts from 'prompts';
-import { runPathSetup } from '../../src/commands/path-setup';
+import { getHomeDirectory } from '../../src/utils/platform';
+import { addToPathUnix, runPathSetup } from '../../src/commands/path-setup';
 
 describe('path-setup command', () => {
   const originalPath = process.env.PATH;
@@ -121,6 +129,65 @@ describe('path-setup command', () => {
       stdout.isTTY = origTTY;
       process.stdin.isTTY = origStdinTTY;
     }
+  });
+});
+
+describe('addToPathUnix rc file selection', () => {
+  const originalShell = process.env.SHELL;
+  let home: string;
+
+  beforeEach(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'envkit-home-'));
+    jest.mocked(getHomeDirectory).mockReturnValue(home);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    if (originalShell === undefined) delete process.env.SHELL;
+    else process.env.SHELL = originalShell;
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  const read = (f: string): string => (fs.existsSync(path.join(home, f)) ? fs.readFileSync(path.join(home, f), 'utf-8') : '');
+
+  it('updates .bashrc, not .zshrc, for a Bash user who has both', () => {
+    process.env.SHELL = '/bin/bash';
+    fs.writeFileSync(path.join(home, '.zshrc'), '# zsh\n');
+    fs.writeFileSync(path.join(home, '.bashrc'), '# bash\n');
+
+    addToPathUnix('/opt/npm/bin');
+
+    expect(read('.bashrc')).toContain('/opt/npm/bin');
+    expect(read('.zshrc')).not.toContain('/opt/npm/bin');
+  });
+
+  it('updates .zshrc for a Zsh user who has both', () => {
+    process.env.SHELL = '/usr/bin/zsh';
+    fs.writeFileSync(path.join(home, '.zshrc'), '# zsh\n');
+    fs.writeFileSync(path.join(home, '.bashrc'), '# bash\n');
+
+    addToPathUnix('/opt/npm/bin');
+
+    expect(read('.zshrc')).toContain('/opt/npm/bin');
+    expect(read('.bashrc')).not.toContain('/opt/npm/bin');
+  });
+
+  it('falls back to the first existing rc file for an unknown shell', () => {
+    process.env.SHELL = '/usr/bin/fish';
+    fs.writeFileSync(path.join(home, '.bashrc'), '# bash\n');
+
+    addToPathUnix('/opt/npm/bin');
+
+    expect(read('.bashrc')).toContain('/opt/npm/bin');
+    expect(read('.profile')).toBe('');
+  });
+
+  it('does not add the path twice', () => {
+    process.env.SHELL = '/bin/bash';
+    addToPathUnix('/opt/npm/bin');
+    addToPathUnix('/opt/npm/bin');
+
+    expect(read('.bashrc').match(/\/opt\/npm\/bin/g)).toHaveLength(1);
   });
 });
 
